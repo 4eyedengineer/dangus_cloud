@@ -1,18 +1,25 @@
 import { useState } from 'react'
 import {
-  AsciiBox,
-  AsciiDivider,
-  AsciiSectionDivider,
-  StatusIndicator,
-  StatusBar,
-  ProgressGauge,
   Layout,
-  SidebarMenu
+  SidebarMenu,
+  ToastProvider,
+  useToast
 } from './components'
+import {
+  Login,
+  Dashboard,
+  ProjectDetail,
+  ServiceDetail,
+  NewServiceForm
+} from './pages'
 
-function App() {
-  const [sectionCollapsed, setSectionCollapsed] = useState(false)
+function AppContent() {
+  const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const [currentView, setCurrentView] = useState('dashboard')
   const [activeNav, setActiveNav] = useState('Dashboard')
+  const [selectedProject, setSelectedProject] = useState(null)
+  const [selectedService, setSelectedService] = useState(null)
+  const toast = useToast()
 
   const navItems = [
     { label: 'Dashboard', href: '/', active: activeNav === 'Dashboard' },
@@ -21,187 +28,184 @@ function App() {
     { label: 'Logout', href: '/logout', active: activeNav === 'Logout' }
   ]
 
-  const sidebarMenuItems = [
-    { label: 'Overview', active: true },
-    { label: 'Deployments' },
-    { label: 'Monitoring' },
-    { label: 'Logs' },
-    { label: 'Configuration' }
-  ]
-
   const handleNavClick = (item) => {
+    if (item.label === 'Logout') {
+      setIsAuthenticated(false)
+      setCurrentView('login')
+      toast.info('Logged out successfully')
+      return
+    }
+
     setActiveNav(item.label)
+    if (item.label === 'Dashboard' || item.label === 'Projects') {
+      setCurrentView('dashboard')
+      setSelectedProject(null)
+      setSelectedService(null)
+    } else if (item.label === 'Settings') {
+      // Settings page could be added later
+      toast.info('Settings page coming soon')
+    }
+  }
+
+  const handleLogin = () => {
+    setIsAuthenticated(true)
+    setCurrentView('dashboard')
+    toast.success('Authentication successful')
+  }
+
+  const handleProjectClick = (project) => {
+    setSelectedProject(project)
+    setCurrentView('projectDetail')
+  }
+
+  const handleServiceClick = (service) => {
+    setSelectedService(service)
+    setCurrentView('serviceDetail')
+  }
+
+  const handleNewProject = () => {
+    toast.info('New project creation coming soon')
+  }
+
+  const handleNewService = () => {
+    setCurrentView('newService')
+  }
+
+  const handleServiceSubmit = async (data) => {
+    // Simulate API call
+    await new Promise(resolve => setTimeout(resolve, 1000))
+    toast.success(`Service "${data.name}" created successfully`)
+    setCurrentView('projectDetail')
+  }
+
+  const handleBack = () => {
+    if (currentView === 'serviceDetail') {
+      setCurrentView('projectDetail')
+      setSelectedService(null)
+    } else if (currentView === 'projectDetail' || currentView === 'newService') {
+      setCurrentView('dashboard')
+      setSelectedProject(null)
+    }
+  }
+
+  const getSidebarItems = () => {
+    if (currentView === 'projectDetail' && selectedProject) {
+      return [
+        { label: 'Overview', active: true },
+        { label: 'Services' },
+        { label: 'Deployments' },
+        { label: 'Logs' },
+        { label: 'Settings' }
+      ]
+    }
+    if (currentView === 'serviceDetail') {
+      return [
+        { label: 'Overview', active: true },
+        { label: 'Configuration' },
+        { label: 'Environment' },
+        { label: 'Webhooks' },
+        { label: 'History' }
+      ]
+    }
+    return [
+      { label: 'All Projects', active: true },
+      { label: 'Active' },
+      { label: 'Archived' },
+      { label: 'Favorites' }
+    ]
+  }
+
+  const getBreadcrumbs = () => {
+    const crumbs = [{ label: 'projects', href: '#' }]
+
+    if (selectedProject) {
+      crumbs.push({ label: selectedProject.name, href: '#' })
+    }
+
+    if (selectedService) {
+      crumbs.push({ label: selectedService.name })
+    }
+
+    if (currentView === 'newService') {
+      crumbs.push({ label: 'new-service' })
+    }
+
+    return crumbs
+  }
+
+  // Show login page if not authenticated
+  if (!isAuthenticated) {
+    return <Login onLogin={handleLogin} />
   }
 
   const sidebarContent = (
     <SidebarMenu
-      items={sidebarMenuItems}
-      onItemClick={(item) => console.log('Sidebar item clicked:', item.label)}
+      items={getSidebarItems()}
+      onItemClick={(item) => toast.info(`Navigating to ${item.label}`)}
     />
   )
+
+  const renderContent = () => {
+    switch (currentView) {
+      case 'dashboard':
+        return (
+          <Dashboard
+            onNewProject={handleNewProject}
+            onProjectClick={handleProjectClick}
+          />
+        )
+      case 'projectDetail':
+        return (
+          <ProjectDetail
+            project={selectedProject}
+            onServiceClick={handleServiceClick}
+            onNewService={handleNewService}
+            onBack={handleBack}
+          />
+        )
+      case 'serviceDetail':
+        return (
+          <ServiceDetail
+            service={selectedService}
+            onBack={handleBack}
+          />
+        )
+      case 'newService':
+        return (
+          <NewServiceForm
+            projectId={selectedProject?.id}
+            onSubmit={handleServiceSubmit}
+            onCancel={handleBack}
+          />
+        )
+      default:
+        return (
+          <Dashboard
+            onNewProject={handleNewProject}
+            onProjectClick={handleProjectClick}
+          />
+        )
+    }
+  }
 
   return (
     <Layout
       navItems={navItems}
       onNavClick={handleNavClick}
-      breadcrumbs={[
-        { label: 'projects', href: '/projects' },
-        { label: 'myapp' },
-        { label: 'backend' }
-      ]}
+      breadcrumbs={getBreadcrumbs()}
       sidebarContent={sidebarContent}
       systemStatus="online"
     >
-      <div className="space-y-8">
-        {/* Status Bar Demo */}
-        <StatusBar
-          items={[
-            { status: 'online', label: 'API' },
-            { status: 'active', label: 'DB' },
-            { status: 'warning', label: 'CACHE' }
-          ]}
-          className="mb-4"
-        />
-
-        <AsciiDivider variant="double" color="amber" />
-
-        {/* AsciiBox Demo */}
-        <section>
-          <h2 className="text-terminal-secondary uppercase tracking-terminal-wide mb-4">
-            ASCII Box Components
-          </h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-            <AsciiBox title="Configuration" variant="green">
-              <div className="text-terminal-primary">
-                <p>server: localhost:3000</p>
-                <p>mode: development</p>
-                <p>debug: enabled</p>
-              </div>
-            </AsciiBox>
-
-            <AsciiBox title="System Status" variant="amber" glowColor="amber">
-              <div className="space-y-2">
-                <StatusIndicator status="online" label="Primary Node" />
-                <br />
-                <StatusIndicator status="active" label="Worker Process" />
-                <br />
-                <StatusIndicator status="pending" label="Backup Sync" />
-              </div>
-            </AsciiBox>
-          </div>
-        </section>
-
-        {/* Divider Demo */}
-        <section>
-          <AsciiSectionDivider
-            title="Divider Variants"
-            collapsed={sectionCollapsed}
-            onToggle={() => setSectionCollapsed(!sectionCollapsed)}
-            color="amber"
-          />
-
-          {!sectionCollapsed && (
-            <div className="mt-4 space-y-4 pl-4">
-              <div>
-                <span className="text-terminal-muted text-sm">single:</span>
-                <AsciiDivider variant="single" color="muted" />
-              </div>
-              <div>
-                <span className="text-terminal-muted text-sm">double:</span>
-                <AsciiDivider variant="double" color="green" />
-              </div>
-              <div>
-                <span className="text-terminal-muted text-sm">dashed:</span>
-                <AsciiDivider variant="dashed" color="amber" />
-              </div>
-              <div>
-                <span className="text-terminal-muted text-sm">with label:</span>
-                <AsciiDivider variant="single" label="Section" color="cyan" />
-              </div>
-            </div>
-          )}
-        </section>
-
-        <AsciiDivider variant="single" color="muted" />
-
-        {/* Status Indicators Demo */}
-        <section className="terminal-border p-4">
-          <h2 className="text-terminal-secondary uppercase tracking-terminal-wide mb-4">
-            Status Indicators
-          </h2>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <StatusIndicator status="online" />
-            <StatusIndicator status="offline" />
-            <StatusIndicator status="error" />
-            <StatusIndicator status="warning" />
-            <StatusIndicator status="loading" pulse />
-            <StatusIndicator status="idle" />
-            <StatusIndicator status="active" />
-            <StatusIndicator status="pending" />
-          </div>
-        </section>
-
-        {/* Progress Gauge Demo */}
-        <section className="terminal-border p-4">
-          <h2 className="text-terminal-secondary uppercase tracking-terminal-wide mb-4">
-            Progress Gauges
-          </h2>
-          <div className="space-y-4">
-            <ProgressGauge value={25} label="CPU Usage" />
-            <ProgressGauge value={65} label="Memory" />
-            <ProgressGauge value={85} label="Disk" />
-            <ProgressGauge value={95} label="Network" />
-          </div>
-        </section>
-
-        {/* Color Palette Demo */}
-        <section className="terminal-border p-4">
-          <h2 className="text-terminal-secondary uppercase tracking-terminal-wide mb-4">
-            Color Palette
-          </h2>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div className="p-4 bg-terminal-secondary terminal-border">
-              <span className="text-terminal-primary">Primary (Green)</span>
-            </div>
-            <div className="p-4 bg-terminal-secondary terminal-border">
-              <span className="text-terminal-secondary">Secondary (Amber)</span>
-            </div>
-            <div className="p-4 bg-terminal-secondary terminal-border">
-              <span className="text-terminal-red">Accent (Red)</span>
-            </div>
-            <div className="p-4 bg-terminal-secondary terminal-border">
-              <span className="text-terminal-muted">Muted (Gray)</span>
-            </div>
-          </div>
-        </section>
-
-        {/* Buttons Demo */}
-        <section className="terminal-border p-4">
-          <h2 className="text-terminal-secondary uppercase tracking-terminal-wide mb-4">
-            Buttons
-          </h2>
-          <div className="flex flex-wrap gap-4">
-            <button className="btn-terminal">Primary Action</button>
-            <button className="btn-terminal-amber">Secondary Action</button>
-            <button className="btn-terminal-red">Danger Action</button>
-          </div>
-        </section>
-
-        {/* Input Demo */}
-        <section className="terminal-border p-4">
-          <h2 className="text-terminal-secondary uppercase tracking-terminal-wide mb-4">
-            Inputs
-          </h2>
-          <div className="space-y-4 max-w-md">
-            <input
-              type="text"
-              className="input-terminal w-full"
-              placeholder="> Enter command..."
-            />
-          </div>
-        </section>
-      </div>
+      {renderContent()}
     </Layout>
+  )
+}
+
+function App() {
+  return (
+    <ToastProvider>
+      <AppContent />
+    </ToastProvider>
   )
 }
 
