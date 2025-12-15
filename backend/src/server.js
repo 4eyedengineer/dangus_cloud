@@ -1,6 +1,7 @@
 import Fastify from 'fastify';
 import cookie from '@fastify/cookie';
 import databasePlugin from './plugins/database.js';
+import authPlugin from './plugins/auth.js';
 import authRoutes from './routes/auth.js';
 
 const fastify = Fastify({
@@ -63,8 +64,38 @@ fastify.register(cookie, {
   parseOptions: {},
 });
 
+// Register auth plugin (provides fastify.authenticate)
+fastify.register(authPlugin);
+
 // Register auth routes
 fastify.register(authRoutes);
+
+// Routes that do not require authentication
+const publicRoutes = [
+  { method: 'GET', url: '/health' },
+  { method: 'GET', url: '/auth/github' },
+  { method: 'GET', url: '/auth/github/callback' },
+];
+
+// Apply authentication to all routes except public ones and webhooks
+fastify.addHook('onRequest', async (request, reply) => {
+  // Skip auth for public routes
+  const isPublicRoute = publicRoutes.some(
+    (route) => route.method === request.method && request.url.startsWith(route.url.split('?')[0])
+  );
+
+  if (isPublicRoute) {
+    return;
+  }
+
+  // Skip auth for webhook routes
+  if (request.method === 'POST' && request.url.startsWith('/webhooks/')) {
+    return;
+  }
+
+  // Apply authentication
+  await fastify.authenticate(request, reply);
+});
 
 // Health check endpoint
 fastify.get('/health', async () => {
