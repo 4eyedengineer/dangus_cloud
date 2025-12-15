@@ -1,0 +1,190 @@
+# Dangus Cloud Backend - Kubernetes Manifests
+# =============================================================================
+# SETUP INSTRUCTIONS:
+#
+# Before deploying, you must update the Secret values below:
+#
+# 1. Create a GitHub OAuth App at https://github.com/settings/developers
+#    - Homepage URL: http://dangus.192.168.1.124.nip.io
+#    - Callback URL: http://api.dangus.192.168.1.124.nip.io/auth/github/callback
+#    - Copy the Client ID and Client Secret
+#
+# 2. Generate encryption keys:
+#    ENCRYPTION_KEY=$(openssl rand -base64 32)
+#    SESSION_SECRET=$(openssl rand -base64 32)
+#
+# 3. Base64 encode all secret values:
+#    echo -n "your_value" | base64
+#
+# 4. Replace the placeholder values in the Secret below
+# =============================================================================
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: backend-config
+  namespace: dangus-cloud
+data:
+  PORT: "3001"
+  HOST: "0.0.0.0"
+  RUN_MIGRATIONS: "true"
+  DATABASE_URL: "postgres://dangus:dangus-dev-password@postgres:5432/dangus_cloud"
+  GITHUB_CALLBACK_URL: "http://api.dangus.192.168.1.124.nip.io/auth/github/callback"
+  HARBOR_URL: "http://harbor.192.168.1.124.nip.io"
+  HARBOR_PROJECT: "dangus"
+  BASE_DOMAIN: "192.168.1.124.nip.io"
+  WEBHOOK_BASE_URL: "http://api.dangus.192.168.1.124.nip.io/webhooks/github"
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: backend-secrets
+  namespace: dangus-cloud
+type: Opaque
+data:
+  # ==========================================================================
+  # IMPORTANT: Replace these placeholder values before deploying!
+  #
+  # To generate values:
+  #   GITHUB_CLIENT_ID:     echo -n "your_client_id" | base64
+  #   GITHUB_CLIENT_SECRET: echo -n "your_client_secret" | base64
+  #   ENCRYPTION_KEY:       openssl rand -base64 32 | tr -d '\n' | base64
+  #   SESSION_SECRET:       openssl rand -base64 32 | tr -d '\n' | base64
+  # ==========================================================================
+
+  # GitHub OAuth credentials (from https://github.com/settings/developers)
+  GITHUB_CLIENT_ID: "cGxhY2Vob2xkZXI="      # placeholder - REPLACE ME
+  GITHUB_CLIENT_SECRET: "cGxhY2Vob2xkZXI="  # placeholder - REPLACE ME
+
+  # Security keys (generate with: openssl rand -base64 32)
+  ENCRYPTION_KEY: "cGxhY2Vob2xkZXI="        # placeholder - REPLACE ME
+  SESSION_SECRET: "cGxhY2Vob2xkZXI="        # placeholder - REPLACE ME
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: backend
+  namespace: dangus-cloud
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: dangus-cloud-backend
+rules:
+  # Namespace management for user projects
+  - apiGroups: [""]
+    resources: ["namespaces"]
+    verbs: ["create", "get", "list", "delete"]
+  # Deployment management
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["create", "get", "list", "watch", "update", "patch", "delete"]
+  # Service management
+  - apiGroups: [""]
+    resources: ["services"]
+    verbs: ["create", "get", "list", "watch", "update", "patch", "delete"]
+  # ConfigMap and Secret management
+  - apiGroups: [""]
+    resources: ["configmaps", "secrets"]
+    verbs: ["create", "get", "list", "watch", "update", "patch", "delete"]
+  # PVC management for user storage
+  - apiGroups: [""]
+    resources: ["persistentvolumeclaims"]
+    verbs: ["create", "get", "list", "watch", "delete"]
+  # Job management for Kaniko builds
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["create", "get", "list", "watch", "delete"]
+  # Pod logs for build output
+  - apiGroups: [""]
+    resources: ["pods", "pods/log"]
+    verbs: ["get", "list", "watch"]
+  # Ingress management
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["ingresses"]
+    verbs: ["create", "get", "list", "watch", "update", "patch", "delete"]
+  # Traefik IngressRoute CRD (if using Traefik-specific resources)
+  - apiGroups: ["traefik.containo.us", "traefik.io"]
+    resources: ["ingressroutes"]
+    verbs: ["create", "get", "list", "watch", "update", "patch", "delete"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: dangus-cloud-backend
+subjects:
+  - kind: ServiceAccount
+    name: backend
+    namespace: dangus-cloud
+roleRef:
+  kind: ClusterRole
+  name: dangus-cloud-backend
+  apiGroup: rbac.authorization.k8s.io
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  namespace: dangus-cloud
+  labels:
+    app: backend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: backend
+  template:
+    metadata:
+      labels:
+        app: backend
+    spec:
+      serviceAccountName: backend
+      containers:
+        - name: backend
+          image: harbor.192.168.1.124.nip.io/dangus/backend:latest
+          ports:
+            - containerPort: 3001
+          envFrom:
+            - configMapRef:
+                name: backend-config
+            - secretRef:
+                name: backend-secrets
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 3001
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 3001
+            initialDelaySeconds: 15
+            periodSeconds: 20
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend
+  namespace: dangus-cloud
+spec:
+  selector:
+    app: backend
+  ports:
+    - port: 3001
+      targetPort: 3001
+  type: ClusterIP
