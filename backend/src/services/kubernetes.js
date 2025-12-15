@@ -137,9 +137,79 @@ export async function applyManifest(manifest) {
     path = `/api/v1/namespaces/${namespace}/persistentvolumeclaims`;
   } else if (apiVersion === 'batch/v1' && kind === 'Job') {
     path = `/apis/batch/v1/namespaces/${namespace}/jobs`;
+  } else if (apiVersion === 'v1' && kind === 'Secret') {
+    path = `/api/v1/namespaces/${namespace}/secrets`;
   } else {
     throw new Error(`Unsupported manifest kind: ${kind}`);
   }
 
   return k8sRequest('POST', path, manifest);
+}
+
+export async function createSecret(namespace, name, data, type = 'Opaque') {
+  const secret = {
+    apiVersion: 'v1',
+    kind: 'Secret',
+    metadata: {
+      name,
+      namespace,
+      labels: {
+        'app.kubernetes.io/managed-by': 'dangus-cloud',
+      },
+    },
+    type,
+    data,
+  };
+
+  return k8sRequest('POST', `/api/v1/namespaces/${namespace}/secrets`, secret);
+}
+
+export async function deleteSecret(namespace, name) {
+  return k8sRequest('DELETE', `/api/v1/namespaces/${namespace}/secrets/${name}`);
+}
+
+export async function getJob(namespace, name) {
+  return k8sRequest('GET', `/apis/batch/v1/namespaces/${namespace}/jobs/${name}`);
+}
+
+export async function deleteJob(namespace, name, propagationPolicy = 'Background') {
+  return k8sRequest('DELETE', `/apis/batch/v1/namespaces/${namespace}/jobs/${name}?propagationPolicy=${propagationPolicy}`);
+}
+
+export async function getPodsByLabel(namespace, labelSelector) {
+  return k8sRequest('GET', `/api/v1/namespaces/${namespace}/pods?labelSelector=${encodeURIComponent(labelSelector)}`);
+}
+
+export async function getPodLogs(namespace, podName, container = null) {
+  const containerParam = container ? `&container=${container}` : '';
+  const url = `${K8S_API_SERVER}/api/v1/namespaces/${namespace}/pods/${podName}/log?timestamps=true${containerParam}`;
+  const token = getServiceAccountToken();
+  if (!token) {
+    throw new Error('Kubernetes authentication not configured');
+  }
+
+  const ca = getCA();
+  const options = {
+    method: 'GET',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+    },
+  };
+
+  if (ca) {
+    options.agent = new https.Agent({ ca });
+  } else {
+    options.agent = new https.Agent({ rejectUnauthorized: false });
+  }
+
+  const response = await fetch(url, options);
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    const error = new Error(`Failed to get pod logs: ${errorText}`);
+    error.status = response.status;
+    throw error;
+  }
+
+  return response.text();
 }
