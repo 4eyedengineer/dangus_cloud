@@ -1,16 +1,126 @@
+import { useState } from 'react'
+import {
+  AsciiLogo,
+  AsciiBox,
+  AsciiDivider,
+  AsciiSectionDivider,
+  StatusIndicator,
+  StatusBar,
+  ProgressGauge
+} from './components'
+
 function App() {
+  const [sectionCollapsed, setSectionCollapsed] = useState(false)
+
   return (
     <div className="min-h-screen bg-terminal-primary p-8">
-      <header className="terminal-border p-4 mb-8">
-        <h1 className="text-terminal-primary text-2xl font-bold tracking-terminal-wide text-glow-green">
-          DANGUS CLOUD
-        </h1>
-        <p className="text-terminal-secondary mt-2">
-          Terminal UI Design System
-        </p>
+      {/* ASCII Logo Demo */}
+      <header className="mb-8">
+        <AsciiLogo showBorder={true} glowColor="green" />
       </header>
 
       <main className="space-y-8">
+        {/* Status Bar Demo */}
+        <StatusBar
+          items={[
+            { status: 'online', label: 'API' },
+            { status: 'active', label: 'DB' },
+            { status: 'warning', label: 'CACHE' }
+          ]}
+          className="mb-4"
+        />
+
+        <AsciiDivider variant="double" color="amber" />
+
+        {/* AsciiBox Demo */}
+        <section>
+          <h2 className="text-terminal-secondary uppercase tracking-terminal-wide mb-4">
+            ASCII Box Components
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+            <AsciiBox title="Configuration" variant="green">
+              <div className="text-terminal-primary">
+                <p>server: localhost:3000</p>
+                <p>mode: development</p>
+                <p>debug: enabled</p>
+              </div>
+            </AsciiBox>
+
+            <AsciiBox title="System Status" variant="amber" glowColor="amber">
+              <div className="space-y-2">
+                <StatusIndicator status="online" label="Primary Node" />
+                <br />
+                <StatusIndicator status="active" label="Worker Process" />
+                <br />
+                <StatusIndicator status="pending" label="Backup Sync" />
+              </div>
+            </AsciiBox>
+          </div>
+        </section>
+
+        {/* Divider Demo */}
+        <section>
+          <AsciiSectionDivider
+            title="Divider Variants"
+            collapsed={sectionCollapsed}
+            onToggle={() => setSectionCollapsed(!sectionCollapsed)}
+            color="amber"
+          />
+
+          {!sectionCollapsed && (
+            <div className="mt-4 space-y-4 pl-4">
+              <div>
+                <span className="text-terminal-muted text-sm">single:</span>
+                <AsciiDivider variant="single" color="muted" />
+              </div>
+              <div>
+                <span className="text-terminal-muted text-sm">double:</span>
+                <AsciiDivider variant="double" color="green" />
+              </div>
+              <div>
+                <span className="text-terminal-muted text-sm">dashed:</span>
+                <AsciiDivider variant="dashed" color="amber" />
+              </div>
+              <div>
+                <span className="text-terminal-muted text-sm">with label:</span>
+                <AsciiDivider variant="single" label="Section" color="cyan" />
+              </div>
+            </div>
+          )}
+        </section>
+
+        <AsciiDivider variant="single" color="muted" />
+
+        {/* Status Indicators Demo */}
+        <section className="terminal-border p-4">
+          <h2 className="text-terminal-secondary uppercase tracking-terminal-wide mb-4">
+            Status Indicators
+          </h2>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <StatusIndicator status="online" />
+            <StatusIndicator status="offline" />
+            <StatusIndicator status="error" />
+            <StatusIndicator status="warning" />
+            <StatusIndicator status="loading" pulse />
+            <StatusIndicator status="idle" />
+            <StatusIndicator status="active" />
+            <StatusIndicator status="pending" />
+          </div>
+        </section>
+
+        {/* Progress Gauge Demo */}
+        <section className="terminal-border p-4">
+          <h2 className="text-terminal-secondary uppercase tracking-terminal-wide mb-4">
+            Progress Gauges
+          </h2>
+          <div className="space-y-4">
+            <ProgressGauge value={25} label="CPU Usage" />
+            <ProgressGauge value={65} label="Memory" />
+            <ProgressGauge value={85} label="Disk" />
+            <ProgressGauge value={95} label="Network" />
+          </div>
+        </section>
+
         {/* Color Palette Demo */}
         <section className="terminal-border p-4">
           <h2 className="text-terminal-secondary uppercase tracking-terminal-wide mb-4">
@@ -32,25 +142,7 @@ function App() {
           </div>
         </section>
 
-        {/* Glow Effects Demo */}
-        <section className="terminal-border p-4">
-          <h2 className="text-terminal-secondary uppercase tracking-terminal-wide mb-4">
-            Glow Effects
-          </h2>
-          <div className="flex flex-wrap gap-4">
-            <div className="p-4 terminal-border-green glow-green">
-              <span className="text-terminal-primary">.glow-green</span>
-            </div>
-            <div className="p-4 terminal-border-amber glow-amber">
-              <span className="text-terminal-secondary">.glow-amber</span>
-            </div>
-            <div className="p-4 terminal-border-red glow-red">
-              <span className="text-terminal-red">.glow-red</span>
-            </div>
-          </div>
-        </section>
-
-        {/* Button Demo */}
+        {/* Buttons Demo */}
         <section className="terminal-border p-4">
           <h2 className="text-terminal-secondary uppercase tracking-terminal-wide mb-4">
             Buttons
@@ -75,25 +167,14 @@ function App() {
             />
           </div>
         </section>
-
-        {/* Link Demo */}
-        <section className="terminal-border p-4">
-          <h2 className="text-terminal-secondary uppercase tracking-terminal-wide mb-4">
-            Links
-          </h2>
-          <div className="space-x-4">
-            <a href="#" className="link-terminal">
-              Standard Link
-            </a>
-            <a href="#" className="link-terminal link-terminal-bracketed">
-              Bracketed Link
-            </a>
-          </div>
-        </section>
       </main>
 
       <footer className="mt-8 pt-4 terminal-border text-terminal-muted text-sm">
-        <p>STATUS: All systems operational</p>
+        <StatusBar
+          items={[
+            { status: 'online', label: 'All systems operational', showLabel: true }
+          ]}
+        />
       </footer>
     </div>
   )
