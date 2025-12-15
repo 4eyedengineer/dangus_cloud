@@ -458,18 +458,18 @@ export default async function serviceRoutes(fastify, options) {
     try {
       // Get the user's GitHub token
       const userResult = await fastify.db.query(
-        'SELECT github_token FROM users WHERE id = $1',
+        'SELECT github_access_token FROM users WHERE id = $1',
         [userId]
       );
 
-      if (!userResult.rows[0]?.github_token) {
+      if (!userResult.rows[0]?.github_access_token) {
         return reply.code(400).send({
           error: 'Bad Request',
           message: 'GitHub token not configured',
         });
       }
 
-      const githubToken = decrypt(userResult.rows[0].github_token);
+      const githubToken = decrypt(userResult.rows[0].github_access_token);
 
       // Get latest commit from the branch
       const commit = await getLatestCommit(githubToken, service.repo_url, service.branch);
