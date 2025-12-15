@@ -4,6 +4,7 @@ import databasePlugin from './plugins/database.js';
 import authPlugin from './plugins/auth.js';
 import authRoutes from './routes/auth.js';
 import projectRoutes from './routes/projects.js';
+import serviceRoutes from './routes/services.js';
 
 const fastify = Fastify({
   logger: true,
@@ -73,6 +74,9 @@ fastify.register(authRoutes);
 
 // Register project routes
 fastify.register(projectRoutes);
+
+// Register service routes
+fastify.register(serviceRoutes);
 
 // Routes that do not require authentication
 const publicRoutes = [
