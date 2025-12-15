@@ -10,6 +10,7 @@
     "migrate": "node src/migrate.js"
   },
   "dependencies": {
+    "@octokit/rest": "^20.0.2",
     "fastify": "^4.24.3",
     "fastify-plugin": "^4.5.1",
     "pg": "^8.11.3"
