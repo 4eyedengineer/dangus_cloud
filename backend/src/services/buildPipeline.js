@@ -1,0 +1,433 @@
+import {
+  applyManifest,
+  createSecret,
+  deleteSecret,
+  getJob,
+  deleteJob,
+  getPodsByLabel,
+  getPodLogs,
+} from './kubernetes.js';
+import {
+  generateKanikoJobManifest,
+  generateDeploymentManifest,
+  generateServiceManifest,
+  generateIngressManifest,
+  generatePVCManifest,
+} from './manifestGenerator.js';
+import { parseGitHubUrl } from './github.js';
+import { updateDeploymentStatus } from '../routes/deployments.js';
+import { decrypt } from './encryption.js';
+
+const HARBOR_REGISTRY = process.env.HARBOR_REGISTRY || 'harbor.192.168.1.124.nip.io';
+const BASE_DOMAIN = process.env.BASE_DOMAIN || '192.168.1.124.nip.io';
+const REGISTRY_SECRET_NAME = process.env.REGISTRY_SECRET_NAME || 'harbor-registry-secret';
+const BUILD_POLL_INTERVAL = 5000; // 5 seconds
+const BUILD_TIMEOUT = 1800000; // 30 minutes
+
+/**
+ * Generate the image tag for a build
+ * @param {string} namespace - Kubernetes namespace
+ * @param {string} serviceName - Service name
+ * @param {string} commitSha - Git commit SHA
+ * @returns {string} Full image path with tag
+ */
+function generateImageTag(namespace, serviceName, commitSha) {
+  return `${HARBOR_REGISTRY}/dangus/${namespace}/${serviceName}:${commitSha.substring(0, 7)}`;
+}
+
+/**
+ * Generate a unique job name for a build
+ * @param {string} serviceName - Service name
+ * @param {string} commitSha - Git commit SHA
+ * @returns {string} Job name
+ */
+function generateJobName(serviceName, commitSha) {
+  return `build-${serviceName}-${commitSha.substring(0, 7)}`;
+}
+
+/**
+ * Create a Kubernetes secret for git credentials
+ * @param {string} namespace - Kubernetes namespace
+ * @param {string} secretName - Secret name
+ * @param {string} githubToken - GitHub personal access token
+ * @returns {Promise<object>} Created secret
+ */
+async function createGitSecret(namespace, secretName, githubToken) {
+  const data = {
+    GIT_USERNAME: Buffer.from('x-access-token').toString('base64'),
+    GIT_PASSWORD: Buffer.from(githubToken).toString('base64'),
+  };
+
+  return createSecret(namespace, secretName, data);
+}
+
+/**
+ * Trigger a build for a service deployment
+ * @param {object} db - Database connection
+ * @param {object} service - Service object from database
+ * @param {object} deployment - Deployment object from database
+ * @param {string} commitSha - Git commit SHA to build
+ * @param {string} githubToken - Decrypted GitHub token
+ * @param {string} namespace - Kubernetes namespace
+ * @param {string} userHash - User hash for subdomain
+ * @returns {Promise<{jobName: string, imageTag: string}>}
+ */
+export async function triggerBuild(db, service, deployment, commitSha, githubToken, namespace, userHash) {
+  // Update deployment status to building
+  await updateDeploymentStatus(db, deployment.id, 'building');
+
+  const jobName = generateJobName(service.name, commitSha);
+  const imageTag = generateImageTag(namespace, service.name, commitSha);
+  const gitSecretName = `git-creds-${jobName}`;
+
+  try {
+    // Create git credentials secret
+    await createGitSecret(namespace, gitSecretName, githubToken);
+
+    // Parse repo URL for Kaniko (needs format: github.com/owner/repo)
+    const { owner, repo } = parseGitHubUrl(service.repo_url);
+    const repoUrl = `github.com/${owner}/${repo}`;
+
+    // Generate and apply Kaniko job
+    const jobManifest = generateKanikoJobManifest({
+      namespace,
+      jobName,
+      repoUrl,
+      branch: service.branch,
+      commitSha,
+      dockerfilePath: `./${service.dockerfile_path}`,
+      imageDest: imageTag,
+      gitSecretName,
+      registrySecretName: REGISTRY_SECRET_NAME,
+    });
+
+    await applyManifest(jobManifest);
+
+    return { jobName, imageTag, gitSecretName };
+  } catch (error) {
+    // Cleanup git secret on failure
+    try {
+      await deleteSecret(namespace, gitSecretName);
+    } catch {
+      // Ignore cleanup errors
+    }
+
+    await updateDeploymentStatus(db, deployment.id, 'failed', {
+      build_logs: `Build trigger failed: ${error.message}`,
+    });
+
+    throw error;
+  }
+}
+
+/**
+ * Watch a build job until completion or failure
+ * @param {object} db - Database connection
+ * @param {string} namespace - Kubernetes namespace
+ * @param {string} jobName - Job name to watch
+ * @param {string} deploymentId - Deployment ID to update
+ * @param {string} gitSecretName - Git secret name for cleanup
+ * @returns {Promise<{success: boolean, imageTag?: string, logs?: string}>}
+ */
+export async function watchBuildJob(db, namespace, jobName, deploymentId, gitSecretName) {
+  const startTime = Date.now();
+
+  while (Date.now() - startTime < BUILD_TIMEOUT) {
+    try {
+      const job = await getJob(namespace, jobName);
+      const status = job.status || {};
+
+      // Check for completion
+      if (status.succeeded >= 1) {
+        const logs = await captureBuildLogs(namespace, jobName);
+
+        // Update deployment with image tag
+        const imageTag = job.spec.template.spec.containers[0].args
+          .find(arg => arg.startsWith('--destination='))
+          ?.replace('--destination=', '');
+
+        await updateDeploymentStatus(db, deploymentId, 'deploying', {
+          build_logs: logs,
+          image_tag: imageTag,
+        });
+
+        // Cleanup
+        await cleanupBuildJob(namespace, jobName, gitSecretName);
+
+        return { success: true, imageTag, logs };
+      }
+
+      // Check for failure
+      if (status.failed >= job.spec.backoffLimit) {
+        const logs = await captureBuildLogs(namespace, jobName);
+
+        await updateDeploymentStatus(db, deploymentId, 'failed', {
+          build_logs: logs,
+        });
+
+        // Cleanup
+        await cleanupBuildJob(namespace, jobName, gitSecretName);
+
+        return { success: false, logs };
+      }
+
+      // Still running, wait and poll again
+      await sleep(BUILD_POLL_INTERVAL);
+    } catch (error) {
+      // Job might not exist yet or other transient error
+      if (error.status === 404) {
+        await sleep(BUILD_POLL_INTERVAL);
+        continue;
+      }
+
+      throw error;
+    }
+  }
+
+  // Timeout reached
+  const logs = await captureBuildLogs(namespace, jobName).catch(() => 'Build timed out');
+
+  await updateDeploymentStatus(db, deploymentId, 'failed', {
+    build_logs: `Build timed out after ${BUILD_TIMEOUT / 1000} seconds\n\n${logs}`,
+  });
+
+  await cleanupBuildJob(namespace, jobName, gitSecretName);
+
+  return { success: false, logs: 'Build timed out' };
+}
+
+/**
+ * Deploy a service after successful build
+ * @param {object} db - Database connection
+ * @param {object} service - Service object from database
+ * @param {object} deployment - Deployment object from database
+ * @param {string} imageTag - Docker image tag
+ * @param {string} namespace - Kubernetes namespace
+ * @param {string} userHash - User hash for subdomain
+ * @param {Array<{name: string, value: string}>} envVars - Decrypted environment variables
+ * @returns {Promise<void>}
+ */
+export async function deployService(db, service, deployment, imageTag, namespace, userHash, envVars = []) {
+  try {
+    const subdomain = `${userHash}-${service.name}`;
+
+    // Generate PVC manifest if storage is configured
+    if (service.storage_gb) {
+      const pvcManifest = generatePVCManifest({
+        namespace,
+        serviceName: service.name,
+        storageGb: service.storage_gb,
+      });
+
+      try {
+        await applyManifest(pvcManifest);
+      } catch (error) {
+        // PVC might already exist, ignore 409 Conflict
+        if (error.status !== 409) {
+          throw error;
+        }
+      }
+    }
+
+    // Generate and apply deployment manifest
+    const deploymentManifest = generateDeploymentManifest({
+      namespace,
+      serviceName: service.name,
+      image: imageTag,
+      port: service.port,
+      envVars: envVars.length > 0 ? envVars : undefined,
+      healthCheckPath: service.health_check_path || undefined,
+      storageClaimName: service.storage_gb ? `${service.name}-pvc` : undefined,
+    });
+
+    try {
+      await applyManifest(deploymentManifest);
+    } catch (error) {
+      // If deployment exists, we need to update it instead
+      if (error.status === 409) {
+        // For now, delete and recreate (could be improved with PATCH)
+        const { deleteDeployment } = await import('./kubernetes.js');
+        await deleteDeployment(namespace, service.name);
+        await applyManifest(deploymentManifest);
+      } else {
+        throw error;
+      }
+    }
+
+    // Generate and apply service manifest
+    const serviceManifest = generateServiceManifest({
+      namespace,
+      serviceName: service.name,
+      port: service.port,
+    });
+
+    try {
+      await applyManifest(serviceManifest);
+    } catch (error) {
+      if (error.status !== 409) {
+        throw error;
+      }
+    }
+
+    // Generate and apply ingress manifest
+    const ingressManifest = generateIngressManifest({
+      namespace,
+      serviceName: service.name,
+      port: service.port,
+      subdomain,
+      baseDomain: BASE_DOMAIN,
+    });
+
+    try {
+      await applyManifest(ingressManifest);
+    } catch (error) {
+      if (error.status !== 409) {
+        throw error;
+      }
+    }
+
+    // Update deployment status to live
+    await updateDeploymentStatus(db, deployment.id, 'live');
+  } catch (error) {
+    await updateDeploymentStatus(db, deployment.id, 'failed', {
+      build_logs: deployment.build_logs + `\n\nDeploy failed: ${error.message}`,
+    });
+
+    throw error;
+  }
+}
+
+/**
+ * Capture build logs from a Kaniko job
+ * @param {string} namespace - Kubernetes namespace
+ * @param {string} jobName - Job name
+ * @returns {Promise<string>} Combined logs from all containers
+ */
+export async function captureBuildLogs(namespace, jobName) {
+  const logs = [];
+
+  try {
+    // Find pods by job-name label
+    const podsResponse = await getPodsByLabel(namespace, `job-name=${jobName}`);
+    const pods = podsResponse.items || [];
+
+    if (pods.length === 0) {
+      return 'No pods found for build job';
+    }
+
+    // Get the most recent pod
+    const pod = pods.sort((a, b) =>
+      new Date(b.metadata.creationTimestamp) - new Date(a.metadata.creationTimestamp)
+    )[0];
+
+    // Try to get logs from init container (git-clone)
+    try {
+      const gitLogs = await getPodLogs(namespace, pod.metadata.name, 'git-clone');
+      logs.push('=== Git Clone Logs ===');
+      logs.push(gitLogs);
+    } catch {
+      logs.push('=== Git Clone Logs ===');
+      logs.push('(no logs available)');
+    }
+
+    // Get logs from main container (kaniko)
+    try {
+      const kanikoLogs = await getPodLogs(namespace, pod.metadata.name, 'kaniko');
+      logs.push('\n=== Kaniko Build Logs ===');
+      logs.push(kanikoLogs);
+    } catch {
+      logs.push('\n=== Kaniko Build Logs ===');
+      logs.push('(no logs available)');
+    }
+  } catch (error) {
+    logs.push(`Failed to capture logs: ${error.message}`);
+  }
+
+  return logs.join('\n');
+}
+
+/**
+ * Cleanup completed Kaniko job and associated resources
+ * @param {string} namespace - Kubernetes namespace
+ * @param {string} jobName - Job name
+ * @param {string} gitSecretName - Git secret name
+ */
+async function cleanupBuildJob(namespace, jobName, gitSecretName) {
+  // Delete git credentials secret
+  try {
+    await deleteSecret(namespace, gitSecretName);
+  } catch {
+    // Ignore cleanup errors
+  }
+
+  // Delete job (will cascade delete pods)
+  try {
+    await deleteJob(namespace, jobName);
+  } catch {
+    // Ignore cleanup errors
+  }
+}
+
+/**
+ * Helper function for async sleep
+ * @param {number} ms - Milliseconds to sleep
+ */
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+/**
+ * Get decrypted environment variables for a service
+ * @param {object} db - Database connection
+ * @param {string} serviceId - Service ID
+ * @returns {Promise<Array<{name: string, value: string}>>}
+ */
+export async function getDecryptedEnvVars(db, serviceId) {
+  const result = await db.query(
+    'SELECT key, value FROM env_vars WHERE service_id = $1',
+    [serviceId]
+  );
+
+  return result.rows.map(row => ({
+    name: row.key,
+    value: decrypt(row.value),
+  }));
+}
+
+/**
+ * Run the complete build and deploy pipeline for a service
+ * @param {object} db - Database connection
+ * @param {object} service - Service object with project_name populated
+ * @param {object} deployment - Deployment object
+ * @param {string} commitSha - Git commit SHA
+ * @param {string} githubToken - Decrypted GitHub token
+ * @param {string} namespace - Kubernetes namespace
+ * @param {string} userHash - User hash for subdomain
+ */
+export async function runBuildPipeline(db, service, deployment, commitSha, githubToken, namespace, userHash) {
+  // Trigger the build
+  const { jobName, imageTag, gitSecretName } = await triggerBuild(
+    db,
+    service,
+    deployment,
+    commitSha,
+    githubToken,
+    namespace,
+    userHash
+  );
+
+  // Watch the build job
+  const buildResult = await watchBuildJob(db, namespace, jobName, deployment.id, gitSecretName);
+
+  if (!buildResult.success) {
+    return { success: false, error: 'Build failed' };
+  }
+
+  // Get decrypted env vars
+  const envVars = await getDecryptedEnvVars(db, service.id);
+
+  // Deploy the service
+  await deployService(db, service, deployment, buildResult.imageTag, namespace, userHash, envVars);
+
+  return { success: true, imageTag: buildResult.imageTag };
+}
