@@ -3,6 +3,7 @@ import cookie from '@fastify/cookie';
 import databasePlugin from './plugins/database.js';
 import authPlugin from './plugins/auth.js';
 import authRoutes from './routes/auth.js';
+import projectRoutes from './routes/projects.js';
 
 const fastify = Fastify({
   logger: true,
@@ -69,6 +70,9 @@ fastify.register(authPlugin);
 
 // Register auth routes
 fastify.register(authRoutes);
+
+// Register project routes
+fastify.register(projectRoutes);
 
 // Routes that do not require authentication
 const publicRoutes = [
