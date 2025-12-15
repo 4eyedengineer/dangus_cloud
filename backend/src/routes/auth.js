@@ -4,6 +4,7 @@ const GITHUB_OAUTH_URL = 'https://github.com/login/oauth/authorize';
 const GITHUB_TOKEN_URL = 'https://github.com/login/oauth/access_token';
 const GITHUB_USER_URL = 'https://api.github.com/user';
 const OAUTH_SCOPES = ['read:user', 'repo'];
+const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
 
 /**
  * Generate a unique hash with collision check
@@ -109,21 +110,21 @@ export default async function authRoutes(fastify, options) {
     // Handle OAuth errors
     if (error) {
       fastify.log.error(`GitHub OAuth error: ${error} - ${error_description}`);
-      return reply.redirect(`/?error=${encodeURIComponent(error_description || error)}`);
+      return reply.redirect(`${FRONTEND_URL}?error=${encodeURIComponent(error_description || error)}`);
     }
 
     // Validate state for CSRF protection
     const storedState = request.cookies.oauth_state;
     if (!state || state !== storedState) {
       fastify.log.warn('OAuth state mismatch - possible CSRF attack');
-      return reply.redirect('/?error=invalid_state');
+      return reply.redirect(`${FRONTEND_URL}?error=invalid_state`);
     }
 
     // Clear the state cookie
     reply.clearCookie('oauth_state', { path: '/' });
 
     if (!code) {
-      return reply.redirect('/?error=missing_code');
+      return reply.redirect(`${FRONTEND_URL}?error=missing_code`);
     }
 
     try {
@@ -180,11 +181,11 @@ export default async function authRoutes(fastify, options) {
         maxAge: 60 * 60 * 24 * 7, // 7 days
       });
 
-      // Redirect to home page
-      return reply.redirect('/');
+      // Redirect to frontend home page
+      return reply.redirect(FRONTEND_URL);
     } catch (err) {
       fastify.log.error(`OAuth callback error: ${err.message}`);
-      return reply.redirect(`/?error=${encodeURIComponent('Authentication failed')}`);
+      return reply.redirect(`${FRONTEND_URL}?error=${encodeURIComponent('Authentication failed')}`);
     }
   });
 

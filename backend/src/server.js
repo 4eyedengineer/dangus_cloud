@@ -1,5 +1,6 @@
 import Fastify from 'fastify';
 import cookie from '@fastify/cookie';
+import cors from '@fastify/cors';
 import databasePlugin from './plugins/database.js';
 import authPlugin from './plugins/auth.js';
 import authRoutes from './routes/auth.js';
@@ -58,6 +59,13 @@ function validateEnv() {
     fastify.log.warn(`Optional env vars not set: ${unconfigured.join(', ')}`);
   }
 }
+
+// Register CORS for cross-origin requests (needed for local dev)
+const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
+fastify.register(cors, {
+  origin: FRONTEND_URL,
+  credentials: true,
+});
 
 // Register database plugin (includes migration runner)
 fastify.register(databasePlugin);

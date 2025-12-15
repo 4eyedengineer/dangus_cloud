@@ -11,6 +11,7 @@ export async function logout() {
 }
 
 export function getLoginUrl() {
-  const apiBaseUrl = import.meta.env.VITE_API_URL || '/api';
-  return `${apiBaseUrl}/auth/github`;
+  // OAuth redirects need to go directly to the backend, not through the proxy
+  const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001';
+  return `${backendUrl}/auth/github`;
 }
