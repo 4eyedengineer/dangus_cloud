@@ -7,3 +7,4 @@ export {
   ProgressGauge,
   ActivityIndicator
 } from './StatusIndicator'
+export { Layout, Breadcrumb, SidebarMenu } from './Layout'

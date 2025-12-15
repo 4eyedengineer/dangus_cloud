@@ -1,25 +1,58 @@
 import { useState } from 'react'
 import {
-  AsciiLogo,
   AsciiBox,
   AsciiDivider,
   AsciiSectionDivider,
   StatusIndicator,
   StatusBar,
-  ProgressGauge
+  ProgressGauge,
+  Layout,
+  SidebarMenu
 } from './components'
 
 function App() {
   const [sectionCollapsed, setSectionCollapsed] = useState(false)
+  const [activeNav, setActiveNav] = useState('Dashboard')
+
+  const navItems = [
+    { label: 'Dashboard', href: '/', active: activeNav === 'Dashboard' },
+    { label: 'Projects', href: '/projects', active: activeNav === 'Projects' },
+    { label: 'Settings', href: '/settings', active: activeNav === 'Settings' },
+    { label: 'Logout', href: '/logout', active: activeNav === 'Logout' }
+  ]
+
+  const sidebarMenuItems = [
+    { label: 'Overview', active: true },
+    { label: 'Deployments' },
+    { label: 'Monitoring' },
+    { label: 'Logs' },
+    { label: 'Configuration' }
+  ]
+
+  const handleNavClick = (item) => {
+    setActiveNav(item.label)
+  }
+
+  const sidebarContent = (
+    <SidebarMenu
+      items={sidebarMenuItems}
+      onItemClick={(item) => console.log('Sidebar item clicked:', item.label)}
+    />
+  )
 
   return (
-    <div className="min-h-screen bg-terminal-primary p-8">
-      {/* ASCII Logo Demo */}
-      <header className="mb-8">
-        <AsciiLogo showBorder={true} glowColor="green" />
-      </header>
-
-      <main className="space-y-8">
+    <Layout
+      navItems={navItems}
+      onNavClick={handleNavClick}
+      breadcrumbs={[
+        { label: 'projects', href: '/projects' },
+        { label: 'myapp' },
+        { label: 'backend' }
+      ]}
+      sidebarContent={sidebarContent}
+      systemStatus="online"
+    >
+      <div className="space-y-8">
         {/* Status Bar Demo */}
         <StatusBar
           items={[
@@ -167,16 +200,8 @@ function App() {
             />
           </div>
         </section>
-      </main>
-
-      <footer className="mt-8 pt-4 terminal-border text-terminal-muted text-sm">
-        <StatusBar
-          items={[
-            { status: 'online', label: 'All systems operational', showLabel: true }
-          ]}
-        />
-      </footer>
-    </div>
+      </div>
+    </Layout>
   )
 }
 
