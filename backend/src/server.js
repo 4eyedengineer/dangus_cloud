@@ -1,5 +1,7 @@
 import Fastify from 'fastify';
+import cookie from '@fastify/cookie';
 import databasePlugin from './plugins/database.js';
+import authRoutes from './routes/auth.js';
 
 const fastify = Fastify({
   logger: true,
@@ -15,11 +17,18 @@ const optionalEnvVars = [
   'GITHUB_CLIENT_SECRET',
   'GITHUB_CALLBACK_URL',
   'ENCRYPTION_KEY',
-  'SESSION_SECRET',
   'HARBOR_URL',
   'HARBOR_PROJECT',
   'BASE_DOMAIN',
   'WEBHOOK_BASE_URL',
+];
+
+const authEnvVars = [
+  'GITHUB_CLIENT_ID',
+  'GITHUB_CLIENT_SECRET',
+  'GITHUB_CALLBACK_URL',
+  'ENCRYPTION_KEY',
+  'SESSION_SECRET',
 ];
 
 function validateEnv() {
@@ -32,6 +41,13 @@ function validateEnv() {
   const configured = optionalEnvVars.filter(v => process.env[v]);
   const unconfigured = optionalEnvVars.filter(v => !process.env[v]);
 
+  // Check if auth is partially configured
+  const authConfigured = authEnvVars.filter(v => process.env[v]);
+  const authMissing = authEnvVars.filter(v => !process.env[v]);
+  if (authConfigured.length > 0 && authMissing.length > 0) {
+    fastify.log.warn(`Auth partially configured. Missing: ${authMissing.join(', ')}`);
+  }
+
   fastify.log.info(`Environment configured: ${requiredEnvVars.length} required, ${configured.length}/${optionalEnvVars.length} optional`);
   if (unconfigured.length > 0) {
     fastify.log.warn(`Optional env vars not set: ${unconfigured.join(', ')}`);
@@ -40,6 +56,15 @@ function validateEnv() {
 
 // Register database plugin (includes migration runner)
 fastify.register(databasePlugin);
+
+// Register cookie plugin for session management
+fastify.register(cookie, {
+  secret: process.env.SESSION_SECRET,
+  parseOptions: {},
+});
+
+// Register auth routes
+fastify.register(authRoutes);
 
 // Health check endpoint
 fastify.get('/health', async () => {
