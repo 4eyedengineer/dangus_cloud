@@ -1,4 +1,5 @@
 export { AsciiLogo } from './AsciiLogo'
+export { ErrorBoundary } from './ErrorBoundary'
 export { AsciiBox, AsciiBoxDynamic } from './AsciiBox'
 export { AsciiDivider, AsciiSectionDivider } from './AsciiDivider'
 export {
