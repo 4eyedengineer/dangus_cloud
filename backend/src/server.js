@@ -6,6 +6,7 @@ import authRoutes from './routes/auth.js';
 import projectRoutes from './routes/projects.js';
 import serviceRoutes from './routes/services.js';
 import deploymentRoutes from './routes/deployments.js';
+import webhookRoutes from './routes/webhooks.js';
 
 const fastify = Fastify({
   logger: true,
@@ -81,6 +82,9 @@ fastify.register(serviceRoutes);
 
 // Register deployment routes
 fastify.register(deploymentRoutes);
+
+// Register webhook routes (no auth required)
+fastify.register(webhookRoutes);
 
 // Routes that do not require authentication
 const publicRoutes = [
