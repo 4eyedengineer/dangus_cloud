@@ -1,9 +1,11 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import {
   Layout,
   SidebarMenu,
   ToastProvider,
-  useToast
+  useToast,
+  TerminalSpinner,
+  ErrorBoundary
 } from './components'
 import {
   Login,
@@ -12,14 +14,37 @@ import {
   ServiceDetail,
   NewServiceForm
 } from './pages'
+import { getCurrentUser, logout, getLoginUrl } from './api/auth'
+import { fetchProjects, createProject, deleteProject } from './api/projects'
+import { fetchProject } from './api/projects'
+import { createService, fetchService, deleteService, triggerDeploy, fetchWebhookSecret } from './api/services'
+import { ApiError } from './api/utils'
 
 function AppContent() {
-  const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const [user, setUser] = useState(null)
+  const [authLoading, setAuthLoading] = useState(true)
   const [currentView, setCurrentView] = useState('dashboard')
   const [activeNav, setActiveNav] = useState('Dashboard')
   const [selectedProject, setSelectedProject] = useState(null)
   const [selectedService, setSelectedService] = useState(null)
   const toast = useToast()
+
+  // Check authentication on mount
+  useEffect(() => {
+    checkAuth()
+  }, [])
+
+  const checkAuth = async () => {
+    try {
+      const userData = await getCurrentUser()
+      setUser(userData)
+    } catch (err) {
+      // Not authenticated - this is expected for logged out users
+      setUser(null)
+    } finally {
+      setAuthLoading(false)
+    }
+  }
 
   const navItems = [
     { label: 'Dashboard', href: '/', active: activeNav === 'Dashboard' },
@@ -28,11 +53,16 @@ function AppContent() {
     { label: 'Logout', href: '/logout', active: activeNav === 'Logout' }
   ]
 
-  const handleNavClick = (item) => {
+  const handleNavClick = async (item) => {
     if (item.label === 'Logout') {
-      setIsAuthenticated(false)
-      setCurrentView('login')
-      toast.info('Logged out successfully')
+      try {
+        await logout()
+        setUser(null)
+        setCurrentView('login')
+        toast.info('Logged out successfully')
+      } catch (err) {
+        toast.error('Failed to logout')
+      }
       return
     }
 
@@ -42,29 +72,22 @@ function AppContent() {
       setSelectedProject(null)
       setSelectedService(null)
     } else if (item.label === 'Settings') {
-      // Settings page could be added later
       toast.info('Settings page coming soon')
     }
   }
 
   const handleLogin = () => {
-    setIsAuthenticated(true)
-    setCurrentView('dashboard')
-    toast.success('Authentication successful')
+    window.location.href = getLoginUrl()
   }
 
-  const handleProjectClick = (project) => {
+  const handleProjectClick = async (project) => {
     setSelectedProject(project)
     setCurrentView('projectDetail')
   }
 
-  const handleServiceClick = (service) => {
+  const handleServiceClick = async (service) => {
     setSelectedService(service)
     setCurrentView('serviceDetail')
-  }
-
-  const handleNewProject = () => {
-    toast.info('New project creation coming soon')
   }
 
   const handleNewService = () => {
@@ -72,10 +95,27 @@ function AppContent() {
   }
 
   const handleServiceSubmit = async (data) => {
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 1000))
-    toast.success(`Service "${data.name}" created successfully`)
-    setCurrentView('projectDetail')
+    try {
+      const serviceData = {
+        name: data.name,
+        repo_url: data.image, // Using image as repo_url for now
+        port: data.port,
+        branch: 'main',
+        dockerfile_path: 'Dockerfile',
+        storage_gb: data.storage || null,
+        health_check_path: data.healthCheckPath || null
+      }
+      await createService(selectedProject.id, serviceData)
+      toast.success(`Service "${data.name}" created successfully`)
+      // Refresh project data
+      const updatedProject = await fetchProject(selectedProject.id)
+      setSelectedProject(updatedProject)
+      setCurrentView('projectDetail')
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'Failed to create service'
+      toast.error(message)
+      throw err
+    }
   }
 
   const handleBack = () => {
@@ -133,8 +173,20 @@ function AppContent() {
     return crumbs
   }
 
+  // Show loading spinner while checking auth
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-terminal-primary terminal-grid-bg flex items-center justify-center">
+        <div className="text-center">
+          <TerminalSpinner className="text-2xl" />
+          <p className="font-mono text-terminal-muted mt-4">Initializing...</p>
+        </div>
+      </div>
+    )
+  }
+
   // Show login page if not authenticated
-  if (!isAuthenticated) {
+  if (!user) {
     return <Login onLogin={handleLogin} />
   }
 
@@ -150,14 +202,13 @@ function AppContent() {
       case 'dashboard':
         return (
           <Dashboard
-            onNewProject={handleNewProject}
             onProjectClick={handleProjectClick}
           />
         )
       case 'projectDetail':
         return (
           <ProjectDetail
-            project={selectedProject}
+            projectId={selectedProject?.id}
             onServiceClick={handleServiceClick}
             onNewService={handleNewService}
             onBack={handleBack}
@@ -166,7 +217,7 @@ function AppContent() {
       case 'serviceDetail':
         return (
           <ServiceDetail
-            service={selectedService}
+            serviceId={selectedService?.id}
             onBack={handleBack}
           />
         )
@@ -181,7 +232,6 @@ function AppContent() {
       default:
         return (
           <Dashboard
-            onNewProject={handleNewProject}
             onProjectClick={handleProjectClick}
           />
         )
@@ -195,6 +245,7 @@ function AppContent() {
       breadcrumbs={getBreadcrumbs()}
       sidebarContent={sidebarContent}
       systemStatus="online"
+      userName={user?.github_username}
     >
       {renderContent()}
     </Layout>
@@ -203,9 +254,11 @@ function AppContent() {
 
 function App() {
   return (
-    <ToastProvider>
-      <AppContent />
-    </ToastProvider>
+    <ErrorBoundary>
+      <ToastProvider>
+        <AppContent />
+      </ToastProvider>
+    </ErrorBoundary>
   )
 }
 

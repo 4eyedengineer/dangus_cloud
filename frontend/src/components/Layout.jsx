@@ -17,7 +17,8 @@ export function Layout({
   ],
   onNavClick = () => {},
   showKeyboardHints = true,
-  className = ''
+  className = '',
+  userName = null
 }) {
   const [currentTime, setCurrentTime] = useState(new Date())
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
@@ -93,6 +94,16 @@ export function Layout({
 
           {/* System Status */}
           <div className="flex flex-col items-end gap-1">
+            {userName && (
+              <div className="flex items-center gap-2 text-sm font-mono mb-1">
+                <span className="text-terminal-muted uppercase tracking-terminal-wide">
+                  USER:
+                </span>
+                <span className="text-terminal-primary">
+                  {userName}
+                </span>
+              </div>
+            )}
             <div className="flex items-center gap-2 text-sm font-mono">
               <span className="text-terminal-muted uppercase tracking-terminal-wide">
                 SYSTEM:
