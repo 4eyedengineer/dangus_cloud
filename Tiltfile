@@ -1,67 +1,133 @@
-# Dangus Cloud - Local Development with Tilt
-# ============================================
+# Dangus Cloud - Kubernetes Development with Tilt
+#
+# Services:
+#   - Frontend: React/Vite (http://dangus.192.168.1.124.nip.io)
+#   - Backend: Node.js/Fastify API (http://api.dangus.192.168.1.124.nip.io)
+#   - PostgreSQL: Database (internal only)
 #
 # Prerequisites:
-#   1. Copy .env.example to .env and fill in your GitHub OAuth credentials
-#   2. Docker running
-#   3. Node.js and npm installed
-#
-# Run with: tilt up
+#   1. Create GitHub OAuth app at https://github.com/settings/developers
+#      - Homepage URL: http://dangus.192.168.1.124.nip.io
+#      - Callback URL: http://api.dangus.192.168.1.124.nip.io/auth/github/callback
+#   2. Create secrets:
+#      kubectl create secret generic dangus-secrets \
+#        --from-literal=GITHUB_CLIENT_ID=your_client_id \
+#        --from-literal=GITHUB_CLIENT_SECRET=your_client_secret \
+#        --from-literal=ENCRYPTION_KEY=$(openssl rand -base64 32) \
+#        --from-literal=SESSION_SECRET=$(openssl rand -base64 32)
 
-# PostgreSQL Database
-# Uses docker-compose style approach to avoid container name conflicts
-local_resource(
-    'postgres',
-    cmd='docker rm -f dangus-postgres 2>/dev/null || true',
-    serve_cmd='docker run --rm --name dangus-postgres -e POSTGRES_USER=dangus -e POSTGRES_PASSWORD=dangus-dev-password -e POSTGRES_DB=dangus_cloud -p 5432:5432 postgres:15-alpine',
-    readiness_probe=probe(
-        tcp_socket=tcp_socket_action(5432),
-        initial_delay_secs=5,
-        period_secs=5,
-    ),
-    labels=['database'],
+# ============================================================================
+# Configuration
+# ============================================================================
+
+# Allow any k8s context
+allow_k8s_contexts(k8s_context())
+
+# Use Harbor registry for images
+default_registry('harbor.192.168.1.124.nip.io/dangus')
+
+# ============================================================================
+# PostgreSQL (Database)
+# ============================================================================
+
+k8s_yaml([
+    'k8s/dev/postgres/deployment.yaml',
+    'k8s/dev/postgres/service.yaml',
+])
+k8s_resource('postgres', labels=['database'])
+
+# ============================================================================
+# RBAC and Secrets
+# ============================================================================
+
+k8s_yaml([
+    'k8s/dev/rbac.yaml',
+    'k8s/dev/secrets.yaml',
+])
+
+# ============================================================================
+# Backend (Node.js/Fastify API)
+# ============================================================================
+
+docker_build(
+    'dangus-backend',
+    './backend',
+    live_update=[
+        sync('./backend/src', '/app/src'),
+        sync('./backend/package.json', '/app/package.json'),
+        run('npm install', trigger=['./backend/package.json']),
+    ]
 )
 
-# Backend API
-local_resource(
+k8s_yaml([
+    'k8s/dev/backend/deployment.yaml',
+    'k8s/dev/backend/service.yaml',
+    'k8s/dev/backend/ingress.yaml',
+])
+k8s_resource(
     'backend',
-    cmd='cd backend && npm install',
-    serve_cmd='cd backend && npm run dev',
-    serve_dir='.',
-    deps=['backend/src'],
     resource_deps=['postgres'],
-    env={
-        'PORT': '3001',
-        'HOST': '0.0.0.0',
-        'DATABASE_URL': 'postgres://dangus:dangus-dev-password@localhost:5432/dangus_cloud',
-        'RUN_MIGRATIONS': 'true',
-        'FRONTEND_URL': 'http://localhost:5173',
-        'GITHUB_CLIENT_ID': os.getenv('GITHUB_CLIENT_ID', ''),
-        'GITHUB_CLIENT_SECRET': os.getenv('GITHUB_CLIENT_SECRET', ''),
-        'GITHUB_CALLBACK_URL': os.getenv('GITHUB_CALLBACK_URL', 'http://localhost:3001/auth/github/callback'),
-        'ENCRYPTION_KEY': os.getenv('ENCRYPTION_KEY', 'dev-encryption-key-32-chars-long!'),
-        'SESSION_SECRET': os.getenv('SESSION_SECRET', 'dev-session-secret-32-chars-long!'),
-        'WEBHOOK_BASE_URL': 'http://localhost:3001/webhooks/github',
-        'BASE_DOMAIN': 'localhost',
-        'HARBOR_REGISTRY': os.getenv('HARBOR_REGISTRY', 'harbor.192.168.1.124.nip.io'),
-        'REGISTRY_SECRET_NAME': 'harbor-registry-secret',
-    },
-    labels=['backend'],
+    labels=['api'],
     links=[
-        link('http://localhost:3001/health', 'API Health'),
-    ],
+        link('http://api.dangus.192.168.1.124.nip.io', 'API'),
+        link('http://api.dangus.192.168.1.124.nip.io/health', 'Health'),
+    ]
 )
 
-# Frontend (Vite dev server with proxy to backend)
-local_resource(
-    'frontend',
-    cmd='cd frontend && npm install',
-    serve_cmd='cd frontend && npm run dev',
-    serve_dir='.',
-    deps=['frontend/src'],
-    resource_deps=['backend'],
-    labels=['frontend'],
-    links=[
-        link('http://localhost:5173', 'Frontend'),
-    ],
+# ============================================================================
+# Frontend (React/Vite)
+# ============================================================================
+
+docker_build(
+    'dangus-frontend',
+    './frontend',
+    live_update=[
+        sync('./frontend/src', '/app/src'),
+        sync('./frontend/public', '/app/public'),
+        sync('./frontend/index.html', '/app/index.html'),
+        sync('./frontend/package.json', '/app/package.json'),
+        run('npm install', trigger=['./frontend/package.json']),
+    ]
 )
+
+k8s_yaml([
+    'k8s/dev/frontend/deployment.yaml',
+    'k8s/dev/frontend/service.yaml',
+    'k8s/dev/frontend/ingress.yaml',
+])
+k8s_resource(
+    'frontend',
+    resource_deps=['backend'],
+    labels=['web'],
+    links=[
+        link('http://dangus.192.168.1.124.nip.io', 'Frontend App'),
+    ]
+)
+
+# ============================================================================
+# Startup Info
+# ============================================================================
+
+print("""
+================================================================================
+  Dangus Cloud - Kubernetes Development
+================================================================================
+
+  Services:
+    Frontend:  http://dangus.192.168.1.124.nip.io
+    Backend:   http://api.dangus.192.168.1.124.nip.io
+    Health:    http://api.dangus.192.168.1.124.nip.io/health
+
+  Hot-reload:
+    - Edit frontend/src/* -> syncs instantly
+    - Edit backend/src/* -> syncs and nodemon auto-reloads
+
+  Setup secrets (if not done):
+    kubectl create secret generic dangus-secrets \\
+      --from-literal=GITHUB_CLIENT_ID=your_client_id \\
+      --from-literal=GITHUB_CLIENT_SECRET=your_client_secret \\
+      --from-literal=ENCRYPTION_KEY=$(openssl rand -base64 32) \\
+      --from-literal=SESSION_SECRET=$(openssl rand -base64 32)
+
+================================================================================
+""")
