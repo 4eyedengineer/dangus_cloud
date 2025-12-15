@@ -70,3 +70,11 @@ export function generateUserHash() {
   }
   return hash;
 }
+
+/**
+ * Generate a secure webhook secret for GitHub webhook verification
+ * @returns {string} - 64 character hex string
+ */
+export function generateWebhookSecret() {
+  return crypto.randomBytes(32).toString('hex');
+}

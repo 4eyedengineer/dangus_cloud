@@ -104,3 +104,42 @@ export async function namespaceExists(name) {
     throw error;
   }
 }
+
+export async function deleteDeployment(namespace, name) {
+  return k8sRequest('DELETE', `/apis/apps/v1/namespaces/${namespace}/deployments/${name}`);
+}
+
+export async function deleteService(namespace, name) {
+  return k8sRequest('DELETE', `/api/v1/namespaces/${namespace}/services/${name}`);
+}
+
+export async function deleteIngress(namespace, name) {
+  return k8sRequest('DELETE', `/apis/networking.k8s.io/v1/namespaces/${namespace}/ingresses/${name}`);
+}
+
+export async function deletePVC(namespace, name) {
+  return k8sRequest('DELETE', `/api/v1/namespaces/${namespace}/persistentvolumeclaims/${name}`);
+}
+
+export async function applyManifest(manifest) {
+  const { apiVersion, kind, metadata } = manifest;
+  const namespace = metadata.namespace;
+  const name = metadata.name;
+
+  let path;
+  if (apiVersion === 'v1' && kind === 'Service') {
+    path = `/api/v1/namespaces/${namespace}/services`;
+  } else if (apiVersion === 'apps/v1' && kind === 'Deployment') {
+    path = `/apis/apps/v1/namespaces/${namespace}/deployments`;
+  } else if (apiVersion === 'networking.k8s.io/v1' && kind === 'Ingress') {
+    path = `/apis/networking.k8s.io/v1/namespaces/${namespace}/ingresses`;
+  } else if (apiVersion === 'v1' && kind === 'PersistentVolumeClaim') {
+    path = `/api/v1/namespaces/${namespace}/persistentvolumeclaims`;
+  } else if (apiVersion === 'batch/v1' && kind === 'Job') {
+    path = `/apis/batch/v1/namespaces/${namespace}/jobs`;
+  } else {
+    throw new Error(`Unsupported manifest kind: ${kind}`);
+  }
+
+  return k8sRequest('POST', path, manifest);
+}
