@@ -98,4 +98,6 @@ async function databasePlugin(fastify, options) {
   });
 }
 
-export default fastifyPlugin(databasePlugin);
+export default fastifyPlugin(databasePlugin, {
+  name: 'database',
+});
