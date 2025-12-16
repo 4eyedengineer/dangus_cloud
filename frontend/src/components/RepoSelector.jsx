@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import TerminalInput from './TerminalInput'
 import TerminalButton from './TerminalButton'
 import TerminalSpinner from './TerminalSpinner'
+import { BranchSelector } from './BranchSelector'
 import { listRepos } from '../api/github'
 
 /**
@@ -19,6 +20,7 @@ export function RepoSelector({
   const [page, setPage] = useState(1)
   const [hasMore, setHasMore] = useState(false)
   const [selectedRepo, setSelectedRepo] = useState(null)
+  const [selectedBranch, setSelectedBranch] = useState('')
 
   // Debounce search
   const [debouncedSearch, setDebouncedSearch] = useState('')
@@ -65,11 +67,16 @@ export function RepoSelector({
 
   const handleRepoClick = (repo) => {
     setSelectedRepo(repo)
+    setSelectedBranch(repo.defaultBranch)
   }
 
   const handleConfirm = () => {
     if (selectedRepo) {
-      onSelect(selectedRepo)
+      // Include the selected branch in the repo object
+      onSelect({
+        ...selectedRepo,
+        defaultBranch: selectedBranch || selectedRepo.defaultBranch
+      })
     }
   }
 
@@ -199,6 +206,23 @@ export function RepoSelector({
         )}
       </div>
 
+      {/* Branch Selector - shown when a repo is selected */}
+      {selectedRepo && (
+        <div className="mt-4 p-3 border border-terminal-border bg-terminal-bg-secondary">
+          <label className="block font-mono text-xs text-terminal-muted uppercase mb-2">
+            Branch
+          </label>
+          <BranchSelector
+            repoUrl={selectedRepo.url}
+            value={selectedBranch}
+            onChange={setSelectedBranch}
+          />
+          <p className="font-mono text-xs text-terminal-muted mt-2">
+            Select a branch to import from
+          </p>
+        </div>
+      )}
+
       {/* Actions */}
       <div className="flex justify-end gap-3 mt-4">
         <TerminalButton variant="secondary" onClick={onCancel}>
@@ -207,7 +231,7 @@ export function RepoSelector({
         <TerminalButton
           variant="primary"
           onClick={handleConfirm}
-          disabled={!selectedRepo}
+          disabled={!selectedRepo || !selectedBranch}
         >
           [ SELECT REPO ]
         </TerminalButton>
