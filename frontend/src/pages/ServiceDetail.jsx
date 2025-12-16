@@ -8,7 +8,7 @@ import TerminalSpinner from '../components/TerminalSpinner'
 import { useToast } from '../components/Toast'
 import { BuildLogViewer } from '../components/BuildLogViewer'
 import { ResourceMetrics } from '../components/ResourceMetrics'
-import { fetchService, triggerDeploy, fetchWebhookSecret, restartService, fetchServiceMetrics } from '../api/services'
+import { fetchService, triggerDeploy, fetchWebhookSecret, restartService, fetchServiceMetrics, validateDockerfile } from '../api/services'
 import { fetchEnvVars, createEnvVar, updateEnvVar, deleteEnvVar, revealEnvVar } from '../api/envVars'
 import { fetchDeployments } from '../api/deployments'
 import { ApiError } from '../api/utils'
@@ -45,6 +45,10 @@ export function ServiceDetail({ serviceId, onBack }) {
   const [restarting, setRestarting] = useState(false)
   const [showRestartMenu, setShowRestartMenu] = useState(false)
   const [lastNotifiedStatus, setLastNotifiedStatus] = useState(null)
+
+  const [validating, setValidating] = useState(false)
+  const [validation, setValidation] = useState(null)
+  const [validationCollapsed, setValidationCollapsed] = useState(true)
 
   const toast = useToast()
 
@@ -276,6 +280,28 @@ export function ServiceDetail({ serviceId, onBack }) {
     }
   }
 
+  const handleValidateDockerfile = async () => {
+    setValidating(true)
+    setValidation(null)
+    try {
+      const result = await validateDockerfile(serviceId)
+      setValidation(result)
+      setValidationCollapsed(false)
+      if (result.valid && result.warnings.length === 0) {
+        toast.success('Dockerfile is valid with no warnings')
+      } else if (result.valid) {
+        toast.warning(`Dockerfile valid with ${result.warnings.length} warning(s)`)
+      } else {
+        toast.error(`Validation failed: ${result.errors.length} error(s)`)
+      }
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'Failed to validate Dockerfile'
+      toast.error(message)
+    } finally {
+      setValidating(false)
+    }
+  }
+
   const formatDate = (dateStr) => {
     const date = new Date(dateStr)
     return date.toISOString().replace('T', ' ').substring(0, 19)
@@ -411,10 +437,19 @@ export function ServiceDetail({ serviceId, onBack }) {
         </div>
 
         <div className="flex gap-2 flex-wrap">
+          {service.repo_url && (
+            <TerminalButton
+              variant="secondary"
+              onClick={handleValidateDockerfile}
+              disabled={validating}
+            >
+              {validating ? '[ VALIDATING... ]' : '[ VALIDATE DOCKERFILE ]'}
+            </TerminalButton>
+          )}
           <TerminalButton
             variant="primary"
             onClick={handleTriggerDeploy}
-            disabled={deploying}
+            disabled={deploying || (validation && !validation.valid)}
           >
             {deploying ? '[ DEPLOYING... ]' : '[ DEPLOY ]'}
           </TerminalButton>
@@ -469,6 +504,115 @@ export function ServiceDetail({ serviceId, onBack }) {
                 }}
               />
             </div>
+          )}
+        </>
+      )}
+
+      {/* Dockerfile Validation Section */}
+      {validation && (
+        <>
+          <AsciiSectionDivider
+            title="DOCKERFILE VALIDATION"
+            collapsed={validationCollapsed}
+            onToggle={() => setValidationCollapsed(!validationCollapsed)}
+            color={validation.valid ? (validation.warnings.length > 0 ? 'amber' : 'green') : 'red'}
+          />
+
+          {!validationCollapsed && (
+            <AsciiBox
+              title={`Validation Results - ${validation.dockerfile_path}`}
+              variant={validation.valid ? (validation.warnings.length > 0 ? 'amber' : 'green') : 'red'}
+              className="mt-4"
+            >
+              {/* Summary */}
+              <div className="flex items-center gap-4 mb-4 pb-3 border-b border-terminal-border">
+                <span className={`font-mono text-sm ${validation.valid ? 'text-terminal-green' : 'text-terminal-red'}`}>
+                  {validation.valid ? '✓ Syntax valid' : '✗ Validation failed'}
+                </span>
+                {validation.summary.errorCount > 0 && (
+                  <span className="font-mono text-xs text-terminal-red">
+                    {validation.summary.errorCount} error(s)
+                  </span>
+                )}
+                {validation.summary.warningCount > 0 && (
+                  <span className="font-mono text-xs text-terminal-yellow">
+                    {validation.summary.warningCount} warning(s)
+                  </span>
+                )}
+                {validation.summary.securityWarnings > 0 && (
+                  <span className="font-mono text-xs text-terminal-red">
+                    {validation.summary.securityWarnings} security
+                  </span>
+                )}
+              </div>
+
+              {/* Errors */}
+              {validation.errors.length > 0 && (
+                <div className="mb-4">
+                  <div className="font-mono text-xs text-terminal-red uppercase mb-2">Errors</div>
+                  <div className="space-y-2">
+                    {validation.errors.map((error, idx) => (
+                      <div key={idx} className="font-mono text-sm text-terminal-red flex gap-2">
+                        <span className="text-terminal-muted">
+                          {error.line ? `Line ${error.line}:` : '•'}
+                        </span>
+                        <span>{error.message}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Warnings */}
+              {validation.warnings.length > 0 && (
+                <div>
+                  <div className="font-mono text-xs text-terminal-yellow uppercase mb-2">Warnings</div>
+                  <div className="space-y-2">
+                    {validation.warnings.map((warning, idx) => (
+                      <div key={idx} className="font-mono text-sm flex gap-2">
+                        <span className="text-terminal-muted">
+                          {warning.line ? `Line ${warning.line}:` : '•'}
+                        </span>
+                        <span className={warning.severity === 'security' ? 'text-terminal-red' : 'text-terminal-yellow'}>
+                          {warning.severity === 'security' && '[SECURITY] '}
+                          {warning.message}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* All good message */}
+              {validation.valid && validation.errors.length === 0 && validation.warnings.length === 0 && (
+                <div className="font-mono text-sm text-terminal-green">
+                  No issues found. Dockerfile is ready for deployment.
+                </div>
+              )}
+
+              {/* Action buttons */}
+              {!validation.valid && (
+                <div className="mt-4 pt-3 border-t border-terminal-border">
+                  <span className="font-mono text-xs text-terminal-muted">
+                    Fix errors before deploying. Deployment is blocked until validation passes.
+                  </span>
+                </div>
+              )}
+              {validation.valid && validation.warnings.length > 0 && (
+                <div className="mt-4 pt-3 border-t border-terminal-border flex items-center justify-between">
+                  <span className="font-mono text-xs text-terminal-muted">
+                    Warnings found but deployment is allowed.
+                  </span>
+                  <TerminalButton
+                    variant="primary"
+                    onClick={handleTriggerDeploy}
+                    disabled={deploying}
+                  >
+                    {deploying ? '[ DEPLOYING... ]' : '[ DEPLOY ANYWAY ]'}
+                  </TerminalButton>
+                </div>
+              )}
+            </AsciiBox>
           )}
         </>
       )}
