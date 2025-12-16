@@ -428,3 +428,87 @@ export async function getSecret(namespace, name) {
     throw err;
   }
 }
+
+/**
+ * Get pod health information including readiness/liveness probe status
+ * @param {string} namespace - Kubernetes namespace
+ * @param {string} labelSelector - Label selector (e.g., "app=servicename")
+ * @returns {Promise<Array>} Array of pod health objects
+ */
+export async function getPodHealth(namespace, labelSelector) {
+  const podsResult = await getPodsByLabel(namespace, labelSelector);
+  const pods = podsResult.items || [];
+
+  return pods.map(pod => {
+    const conditions = pod.status?.conditions || [];
+    const containerStatuses = pod.status?.containerStatuses || [];
+
+    // Get condition statuses
+    const readyCondition = conditions.find(c => c.type === 'Ready');
+    const containersReadyCondition = conditions.find(c => c.type === 'ContainersReady');
+
+    // Get container info for restart count
+    const mainContainer = containerStatuses[0] || {};
+
+    return {
+      name: pod.metadata.name,
+      ready: readyCondition?.status === 'True',
+      phase: pod.status?.phase,
+      restartCount: mainContainer.restartCount || 0,
+      liveness: {
+        status: containersReadyCondition?.status === 'True' ? 'passing' : 'failing',
+        lastCheck: containersReadyCondition?.lastTransitionTime || null,
+        message: containersReadyCondition?.message || null
+      },
+      readiness: {
+        status: readyCondition?.status === 'True' ? 'passing' : 'failing',
+        lastCheck: readyCondition?.lastTransitionTime || null,
+        message: readyCondition?.message || null
+      }
+    };
+  });
+}
+
+/**
+ * Get events for pods in a namespace with a specific label
+ * @param {string} namespace - Kubernetes namespace
+ * @param {string} labelSelector - Label selector (e.g., "app=servicename")
+ * @returns {Promise<Array>} Array of relevant events
+ */
+export async function getPodEvents(namespace, labelSelector) {
+  // Get pods first to get their names
+  const podsResult = await getPodsByLabel(namespace, labelSelector);
+  const pods = podsResult.items || [];
+  const podNames = pods.map(p => p.metadata.name);
+
+  if (podNames.length === 0) {
+    return [];
+  }
+
+  // Get events for the namespace
+  const eventsResult = await k8sRequest('GET', `/api/v1/namespaces/${namespace}/events`);
+  const events = eventsResult.items || [];
+
+  // Filter events related to our pods and probe failures
+  return events
+    .filter(event => {
+      const involvedName = event.involvedObject?.name;
+      const isRelevantPod = podNames.includes(involvedName);
+      const isProbeEvent = event.reason === 'Unhealthy' ||
+                          event.reason === 'ProbeError' ||
+                          event.reason === 'BackOff' ||
+                          event.reason === 'Started' ||
+                          event.reason === 'Killing';
+      return isRelevantPod && isProbeEvent;
+    })
+    .map(event => ({
+      type: event.type,
+      reason: event.reason,
+      message: event.message,
+      count: event.count || 1,
+      lastTimestamp: event.lastTimestamp || event.eventTime,
+      podName: event.involvedObject?.name
+    }))
+    .sort((a, b) => new Date(b.lastTimestamp) - new Date(a.lastTimestamp))
+    .slice(0, 20); // Return last 20 events
+}

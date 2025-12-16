@@ -90,3 +90,12 @@ export async function fetchServiceLogs(id, options = {}) {
   const url = `/services/${id}/logs${queryString ? `?${queryString}` : ''}`;
   return apiFetch(url);
 }
+
+/**
+ * Fetch health check status for a service
+ * @param {string} id - Service ID
+ * @returns {Promise<{configured: boolean, path?: string, status?: string, pods?: Array, activeCheck?: object, history?: Array, events?: Array}>}
+ */
+export async function fetchServiceHealth(id) {
+  return apiFetch(`/services/${id}/health`);
+}

@@ -1,9 +1,10 @@
 import { generateWebhookSecret } from '../services/encryption.js';
-import { deleteDeployment, deleteService, deleteIngress, deletePVC, rolloutRestart, deleteServicePods, getPodMetrics, getDeployment, getPodsByLabel, getPodLogs, streamPodLogs } from '../services/kubernetes.js';
+import { deleteDeployment, deleteService, deleteIngress, deletePVC, rolloutRestart, deleteServicePods, getPodMetrics, getDeployment, getPodsByLabel, getPodLogs, streamPodLogs, getPodHealth, getPodEvents } from '../services/kubernetes.js';
 import { getLatestCommit, getFileContent } from '../services/github.js';
 import { decrypt, encrypt } from '../services/encryption.js';
 import { runBuildPipeline } from '../services/buildPipeline.js';
 import { validateDockerfile } from '../services/dockerfileValidator.js';
+import { performHealthCheck, getHealthHistory } from '../services/healthChecker.js';
 
 const NAME_REGEX = /^[a-z][a-z0-9-]*[a-z0-9]$|^[a-z]$/;
 const NAME_MIN_LENGTH = 1;
@@ -689,6 +690,92 @@ export default async function serviceRoutes(fastify, options) {
       return reply.code(500).send({
         error: 'Internal Server Error',
         message: 'Failed to get service metrics',
+      });
+    }
+  });
+
+  /**
+   * GET /services/:id/health
+   * Get health check status for a service
+   */
+  fastify.get('/services/:id/health', { schema: serviceParamsSchema }, async (request, reply) => {
+    const userId = request.user.id;
+    const userHash = request.user.hash;
+    const serviceId = request.params.id;
+
+    // Verify ownership
+    const ownershipCheck = await verifyServiceOwnership(serviceId, userId);
+    if (ownershipCheck.error) {
+      return reply.code(ownershipCheck.status).send({
+        error: ownershipCheck.status === 404 ? 'Not Found' : 'Forbidden',
+        message: ownershipCheck.error,
+      });
+    }
+
+    const { service } = ownershipCheck;
+
+    // Check if health check is configured
+    if (!service.health_check_path) {
+      return {
+        configured: false,
+        message: 'No health check path configured for this service'
+      };
+    }
+
+    const namespace = computeNamespace(userHash, service.project_name);
+    const subdomain = computeSubdomain(userHash, service.name);
+
+    try {
+      // Get pod health from Kubernetes
+      let podHealth = [];
+      let events = [];
+      try {
+        podHealth = await getPodHealth(namespace, `app=${service.name}`);
+        events = await getPodEvents(namespace, `app=${service.name}`);
+      } catch (k8sErr) {
+        fastify.log.warn(`Could not get pod health for ${service.name}: ${k8sErr.message}`);
+      }
+
+      // Perform active health check
+      let activeCheck = null;
+      try {
+        activeCheck = await performHealthCheck(subdomain, service.health_check_path, service.port);
+      } catch (healthErr) {
+        fastify.log.warn(`Active health check failed for ${service.name}: ${healthErr.message}`);
+        activeCheck = {
+          status: 'unhealthy',
+          error: healthErr.message,
+          lastCheck: new Date().toISOString()
+        };
+      }
+
+      // Get health check history
+      let history = [];
+      try {
+        history = await getHealthHistory(fastify.db, serviceId, 20);
+      } catch (historyErr) {
+        fastify.log.warn(`Could not get health history for ${service.name}: ${historyErr.message}`);
+      }
+
+      // Calculate overall health status
+      const allPodsReady = podHealth.length > 0 && podHealth.every(p => p.ready);
+      const activeHealthy = activeCheck?.status === 'healthy';
+      const overallStatus = (allPodsReady && activeHealthy) ? 'healthy' : 'unhealthy';
+
+      return {
+        configured: true,
+        path: service.health_check_path,
+        status: overallStatus,
+        pods: podHealth,
+        activeCheck,
+        history,
+        events: events.slice(0, 10) // Last 10 relevant events
+      };
+    } catch (err) {
+      fastify.log.error(`Failed to get health status: ${err.message}`);
+      return reply.code(500).send({
+        error: 'Internal Server Error',
+        message: 'Failed to get health status',
       });
     }
   });
