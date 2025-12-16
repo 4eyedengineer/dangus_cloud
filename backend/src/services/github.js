@@ -175,6 +175,58 @@ export function clearCache() {
 }
 
 /**
+ * List branches for a repository
+ * @param {string} token - GitHub personal access token
+ * @param {string} repoUrl - GitHub repository URL
+ * @param {string} search - Optional search filter
+ * @returns {Promise<Array<{name: string, protected: boolean, isDefault: boolean}>>}
+ */
+export async function listBranches(token, repoUrl, search = '') {
+  const { owner, repo } = parseGitHubUrl(repoUrl);
+  const cacheKey = getCacheKey('branches', owner, repo, search);
+
+  const cached = getFromCache(cacheKey);
+  if (cached) return cached;
+
+  const octokit = createOctokit(token);
+
+  // Fetch all branches (paginated)
+  const { data } = await octokit.repos.listBranches({
+    owner,
+    repo,
+    per_page: 100
+  });
+
+  // Get default branch
+  const { data: repoData } = await octokit.repos.get({ owner, repo });
+  const defaultBranch = repoData.default_branch;
+
+  let branches = data.map(b => ({
+    name: b.name,
+    protected: b.protected,
+    isDefault: b.name === defaultBranch
+  }));
+
+  // Filter by search if provided
+  if (search) {
+    const searchLower = search.toLowerCase();
+    branches = branches.filter(b =>
+      b.name.toLowerCase().includes(searchLower)
+    );
+  }
+
+  // Sort: default first, then alphabetically
+  branches.sort((a, b) => {
+    if (a.isDefault) return -1;
+    if (b.isDefault) return 1;
+    return a.name.localeCompare(b.name);
+  });
+
+  setCache(cacheKey, branches);
+  return branches;
+}
+
+/**
  * List repositories accessible to the authenticated user
  * Includes personal repos and repos from organizations the user belongs to
  * @param {string} token - GitHub personal access token

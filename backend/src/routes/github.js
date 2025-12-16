@@ -3,7 +3,8 @@ import {
   listUserRepos,
   getFileContent,
   getRepoTree,
-  getRepoInfo
+  getRepoInfo,
+  listBranches
 } from '../services/github.js';
 import { parseDockerCompose, findDockerfiles } from '../services/composeParser.js';
 
@@ -69,6 +70,45 @@ export default async function githubRoutes(fastify, options) {
       return reply.code(500).send({
         error: 'Internal Server Error',
         message: 'Failed to list repositories'
+      });
+    }
+  });
+
+  /**
+   * GET /github/branches
+   * List branches for a repository
+   */
+  fastify.get('/github/branches', {
+    schema: {
+      querystring: {
+        type: 'object',
+        required: ['repo_url'],
+        properties: {
+          repo_url: { type: 'string' },
+          search: { type: 'string' }
+        }
+      }
+    }
+  }, async (request, reply) => {
+    const userId = request.user.id;
+    const { repo_url, search } = request.query;
+
+    try {
+      const githubToken = await getGitHubToken(fastify, userId);
+      if (!githubToken) {
+        return reply.code(400).send({
+          error: 'Bad Request',
+          message: 'GitHub token not configured'
+        });
+      }
+
+      const branches = await listBranches(githubToken, repo_url, search || '');
+      return { branches };
+    } catch (error) {
+      fastify.log.error(`Failed to list branches: ${error.message}`);
+      return reply.code(500).send({
+        error: 'Internal Server Error',
+        message: 'Failed to list branches'
       });
     }
   });
