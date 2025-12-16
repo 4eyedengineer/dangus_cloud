@@ -402,3 +402,29 @@ export async function deleteServicePods(namespace, serviceName) {
     `/api/v1/namespaces/${namespace}/pods?labelSelector=app=${encodeURIComponent(serviceName)}`
   );
 }
+
+export async function getIngress(namespace, name) {
+  return k8sRequest('GET', `/apis/networking.k8s.io/v1/namespaces/${namespace}/ingresses/${name}`);
+}
+
+export async function getCertificate(namespace, name) {
+  try {
+    return await k8sRequest('GET', `/apis/cert-manager.io/v1/namespaces/${namespace}/certificates/${name}`);
+  } catch (err) {
+    if (err.status === 404) {
+      return null;
+    }
+    throw err;
+  }
+}
+
+export async function getSecret(namespace, name) {
+  try {
+    return await k8sRequest('GET', `/api/v1/namespaces/${namespace}/secrets/${name}`);
+  } catch (err) {
+    if (err.status === 404) {
+      return null;
+    }
+    throw err;
+  }
+}

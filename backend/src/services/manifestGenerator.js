@@ -243,3 +243,27 @@ export function generateKanikoJobManifest(options) {
   const yaml = interpolate(template, options);
   return parse(yaml);
 }
+
+/**
+ * Generate a Kubernetes Ingress manifest for custom domains with TLS
+ * @param {object} options - Domain Ingress configuration
+ * @param {string} options.namespace - Kubernetes namespace
+ * @param {string} options.serviceName - Service name
+ * @param {number} options.port - Service port number
+ * @param {string} options.domain - Custom domain (e.g., api.example.com)
+ * @param {string} options.ingressName - Unique ingress name for this domain
+ * @param {string} options.secretName - TLS secret name for certificate storage
+ * @returns {object} Parsed Kubernetes manifest object
+ */
+export function generateDomainIngressManifest(options) {
+  const required = ['namespace', 'serviceName', 'port', 'domain', 'ingressName', 'secretName'];
+  for (const field of required) {
+    if (!(field in options)) {
+      throw new Error(`Missing required option: ${field}`);
+    }
+  }
+
+  const template = loadTemplate('domain-ingress.yaml.tpl');
+  const yaml = interpolate(template, options);
+  return parse(yaml);
+}

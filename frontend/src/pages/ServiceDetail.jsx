@@ -8,6 +8,7 @@ import TerminalSpinner from '../components/TerminalSpinner'
 import { useToast } from '../components/Toast'
 import { BuildLogViewer } from '../components/BuildLogViewer'
 import { ResourceMetrics } from '../components/ResourceMetrics'
+import { DomainManager } from '../components/DomainManager'
 import { LogViewer } from '../components/LogViewer'
 import { fetchService, triggerDeploy, fetchWebhookSecret, restartService, fetchServiceMetrics, validateDockerfile } from '../api/services'
 import { fetchEnvVars, createEnvVar, updateEnvVar, deleteEnvVar, revealEnvVar } from '../api/envVars'
@@ -25,6 +26,7 @@ export function ServiceDetail({ serviceId, onBack }) {
   const [resourcesCollapsed, setResourcesCollapsed] = useState(false)
   const [envCollapsed, setEnvCollapsed] = useState(false)
   const [webhooksCollapsed, setWebhooksCollapsed] = useState(false)
+  const [domainsCollapsed, setDomainsCollapsed] = useState(false)
   const [historyCollapsed, setHistoryCollapsed] = useState(false)
   const [buildLogsCollapsed, setBuildLogsCollapsed] = useState(false)
   const [showBuildLogs, setShowBuildLogs] = useState(false)
@@ -835,6 +837,20 @@ export function ServiceDetail({ serviceId, onBack }) {
             </div>
           </div>
         </AsciiBox>
+      )}
+
+      {/* Custom Domains Section */}
+      <AsciiSectionDivider
+        title="CUSTOM DOMAINS"
+        collapsed={domainsCollapsed}
+        onToggle={() => setDomainsCollapsed(!domainsCollapsed)}
+        color="purple"
+      />
+
+      {!domainsCollapsed && (
+        <div className="mt-4">
+          <DomainManager serviceId={serviceId} />
+        </div>
       )}
 
       {/* Deployment History Section */}
