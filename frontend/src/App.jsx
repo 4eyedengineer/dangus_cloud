@@ -102,6 +102,7 @@ function AppContent() {
         port: data.port,
         branch: 'main',
         dockerfile_path: 'Dockerfile',
+        replicas: data.replicas || 1,
         storage_gb: data.storage || null,
         health_check_path: data.healthCheckPath || null
       }

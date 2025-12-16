@@ -334,6 +334,10 @@ export function ServiceDetail({ serviceId, onBack }) {
               <span className="font-mono text-xs text-terminal-muted uppercase">DOCKERFILE:</span>
               <span className="font-mono text-sm text-terminal-primary">{service.dockerfile_path || 'Dockerfile'}</span>
             </div>
+            <div className="flex items-center justify-between border-b border-terminal-border pb-2">
+              <span className="font-mono text-xs text-terminal-muted uppercase">REPLICAS:</span>
+              <span className="font-mono text-sm text-terminal-primary">{service.replicas || 1}</span>
+            </div>
             {service.storage_gb && (
               <div className="flex items-center justify-between border-b border-terminal-border pb-2">
                 <span className="font-mono text-xs text-terminal-muted uppercase">STORAGE:</span>

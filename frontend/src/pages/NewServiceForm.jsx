@@ -239,7 +239,7 @@ export function NewServiceForm({ projectId, onSubmit, onCancel }) {
               value={formData.replicas}
               onChange={handleInputChange}
               min={1}
-              max={10}
+              max={3}
               step={1}
               unit="replica(s)"
               label="REPLICAS"
