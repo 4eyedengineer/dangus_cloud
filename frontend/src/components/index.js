@@ -23,3 +23,4 @@ export { WizardStepIndicator, CompactStepIndicator } from './WizardStepIndicator
 export { RepoSelector } from './RepoSelector'
 export { ServiceTable } from './ServiceTable'
 export { ResourceMetrics } from './ResourceMetrics'
+export { DomainManager } from './DomainManager'

@@ -926,7 +926,6 @@ export default async function serviceRoutes(fastify, options) {
   });
 
   /**
-<<<<<<< HEAD
    * POST /services/:id/restart
    * Restart a service without triggering a full rebuild
    */
@@ -945,14 +944,6 @@ export default async function serviceRoutes(fastify, options) {
     const userHash = request.user.hash;
     const serviceId = request.params.id;
     const { type = 'rolling' } = request.body || {};
-=======
-   * POST /services/:id/validate-dockerfile
-   * Validate the Dockerfile for a service before building
-   */
-  fastify.post('/services/:id/validate-dockerfile', { schema: serviceParamsSchema }, async (request, reply) => {
-    const userId = request.user.id;
-    const serviceId = request.params.id;
->>>>>>> 285df69 (Add Dockerfile validation before build)
 
     // Verify ownership
     const ownershipCheck = await verifyServiceOwnership(serviceId, userId);
@@ -964,7 +955,6 @@ export default async function serviceRoutes(fastify, options) {
     }
 
     const { service } = ownershipCheck;
-<<<<<<< HEAD
     const namespace = computeNamespace(userHash, service.project_name);
 
     try {
@@ -986,7 +976,28 @@ export default async function serviceRoutes(fastify, options) {
       return reply.code(500).send({
         error: 'Internal Server Error',
         message: 'Failed to restart service',
-=======
+      });
+    }
+  });
+
+  /**
+   * POST /services/:id/validate-dockerfile
+   * Validate the Dockerfile for a service before building
+   */
+  fastify.post('/services/:id/validate-dockerfile', { schema: serviceParamsSchema }, async (request, reply) => {
+    const userId = request.user.id;
+    const serviceId = request.params.id;
+
+    // Verify ownership
+    const ownershipCheck = await verifyServiceOwnership(serviceId, userId);
+    if (ownershipCheck.error) {
+      return reply.code(ownershipCheck.status).send({
+        error: ownershipCheck.status === 404 ? 'Not Found' : 'Forbidden',
+        message: ownershipCheck.error,
+      });
+    }
+
+    const { service } = ownershipCheck;
 
     // Cannot validate if no repo_url (image-only services)
     if (!service.repo_url) {
@@ -1042,7 +1053,6 @@ export default async function serviceRoutes(fastify, options) {
       return reply.code(500).send({
         error: 'Internal Server Error',
         message: 'Failed to validate Dockerfile',
->>>>>>> 285df69 (Add Dockerfile validation before build)
       });
     }
   });
