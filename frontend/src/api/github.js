@@ -30,3 +30,17 @@ export async function analyzeRepo(repoUrl, branch) {
     body: JSON.stringify({ repoUrl, branch })
   });
 }
+
+/**
+ * List branches for a repository
+ * @param {string} repoUrl - Repository URL
+ * @param {string} search - Search filter (optional)
+ * @returns {Promise<{branches: Array<{name: string, protected: boolean, isDefault: boolean}>}>}
+ */
+export async function listBranches(repoUrl, search = '') {
+  const params = new URLSearchParams();
+  params.set('repo_url', repoUrl);
+  if (search) params.set('search', search);
+
+  return apiFetch(`/github/branches?${params.toString()}`);
+}

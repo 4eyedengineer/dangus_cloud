@@ -68,3 +68,25 @@ export async function validateDockerfile(id) {
     method: 'POST'
   });
 }
+
+/**
+ * Fetch container logs for a service
+ * @param {string} id - Service ID
+ * @param {object} options - Query options
+ * @param {number} options.tailLines - Number of lines to fetch (default 100)
+ * @param {number} options.sinceSeconds - Fetch logs from last N seconds
+ * @param {string} options.pod - Specific pod name
+ * @param {string} options.container - Specific container name
+ * @returns {Promise<{pods: Array}>}
+ */
+export async function fetchServiceLogs(id, options = {}) {
+  const params = new URLSearchParams();
+  if (options.tailLines) params.append('tailLines', options.tailLines);
+  if (options.sinceSeconds) params.append('sinceSeconds', options.sinceSeconds);
+  if (options.pod) params.append('pod', options.pod);
+  if (options.container) params.append('container', options.container);
+
+  const queryString = params.toString();
+  const url = `/services/${id}/logs${queryString ? `?${queryString}` : ''}`;
+  return apiFetch(url);
+}

@@ -236,9 +236,12 @@ export async function getPodMetrics(namespace, labelSelector) {
   }));
 }
 
-export async function getPodLogs(namespace, podName, container = null) {
-  const containerParam = container ? `&container=${container}` : '';
-  const path = `/api/v1/namespaces/${namespace}/pods/${podName}/log?timestamps=true${containerParam}`;
+export async function getPodLogs(namespace, podName, options = {}) {
+  const { container = null, tailLines = 100, sinceSeconds = null } = options;
+  let path = `/api/v1/namespaces/${namespace}/pods/${podName}/log?timestamps=true`;
+  if (container) path += `&container=${container}`;
+  if (tailLines) path += `&tailLines=${tailLines}`;
+  if (sinceSeconds) path += `&sinceSeconds=${sinceSeconds}`;
   const token = getServiceAccountToken();
   if (!token) {
     throw new Error('Kubernetes authentication not configured');
@@ -286,9 +289,11 @@ export async function getPodLogs(namespace, podName, container = null) {
  * Stream pod logs in real-time using follow mode
  * Returns an EventEmitter-like object that emits 'data', 'error', and 'end' events
  */
-export function streamPodLogs(namespace, podName, container = null) {
-  const containerParam = container ? `&container=${container}` : '';
-  const path = `/api/v1/namespaces/${namespace}/pods/${podName}/log?follow=true&timestamps=true${containerParam}`;
+export function streamPodLogs(namespace, podName, options = {}) {
+  const { container = null, tailLines = 100 } = options;
+  let path = `/api/v1/namespaces/${namespace}/pods/${podName}/log?follow=true&timestamps=true`;
+  if (container) path += `&container=${container}`;
+  if (tailLines) path += `&tailLines=${tailLines}`;
   const token = getServiceAccountToken();
 
   if (!token) {
