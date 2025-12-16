@@ -1,18 +1,33 @@
 import { parse } from 'yaml';
+import logger from './logger.js';
 
 /**
  * Sanitize service name for Kubernetes DNS compatibility
- * Must be lowercase, alphanumeric, and hyphens only, max 63 chars
+ * Must be lowercase, start with letter, alphanumeric and hyphens only, max 63 chars
  * @param {string} name - Original service name
  * @returns {string} - Sanitized name
  */
 function sanitizeServiceName(name) {
-  return name
+  let sanitized = name
     .toLowerCase()
-    .replace(/[^a-z0-9-]/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .replace(/-+/g, '-')
-    .substring(0, 63);
+    .replace(/[^a-z0-9-]/g, '-')  // Replace invalid chars with hyphens
+    .replace(/-+/g, '-')          // Collapse consecutive hyphens
+    .replace(/^-+|-+$/g, '');     // Trim leading/trailing hyphens
+
+  // Ensure name starts with a letter (required for K8s DNS)
+  if (sanitized && !/^[a-z]/.test(sanitized)) {
+    sanitized = 'svc-' + sanitized;
+  }
+
+  // Ensure name ends with alphanumeric (required for K8s DNS)
+  sanitized = sanitized.replace(/-+$/, '');
+
+  // Handle empty result
+  if (!sanitized) {
+    sanitized = 'service';
+  }
+
+  return sanitized.substring(0, 63);
 }
 
 /**
@@ -186,11 +201,30 @@ export function parseDockerCompose(composeContent) {
     // Handle build configuration
     if (config.build) {
       if (typeof config.build === 'string') {
+        // String format: build: ./path
         service.build = { context: config.build, dockerfile: 'Dockerfile' };
+        logger.debug(`Service "${serviceName}": build is string, using default dockerfile`, {
+          context: config.build
+        });
       } else {
+        // Object format: build: { context: ..., dockerfile: ... }
+        const context = config.build.context;
+        const dockerfile = config.build.dockerfile;
+
+        if (!context) {
+          logger.warn(`Service "${serviceName}": build.context not specified, using "."`, {
+            originalName: serviceName
+          });
+        }
+        if (!dockerfile) {
+          logger.debug(`Service "${serviceName}": build.dockerfile not specified, using "Dockerfile"`, {
+            context: context || '.'
+          });
+        }
+
         service.build = {
-          context: config.build.context || '.',
-          dockerfile: config.build.dockerfile || 'Dockerfile'
+          context: context || '.',
+          dockerfile: dockerfile || 'Dockerfile'
         };
       }
     }

@@ -39,13 +39,47 @@ export function ServiceTable({
     }
   }
 
+  const sanitizeName = (value) => {
+    let name = value
+      .toLowerCase()
+      .replace(/[^a-z0-9-]/g, '-')  // Replace invalid chars
+      .replace(/-+/g, '-')          // Collapse consecutive hyphens
+      .replace(/^-+|-+$/g, '')      // Trim leading/trailing hyphens
+
+    // Ensure starts with letter
+    if (name && !/^[a-z]/.test(name)) {
+      name = 'svc-' + name
+    }
+
+    // Ensure ends with alphanumeric
+    name = name.replace(/-+$/, '')
+
+    return name.substring(0, 63) || 'service'
+  }
+
   const handleNameChange = (index, value) => {
-    const name = value.toLowerCase().replace(/[^a-z0-9-]/g, '-').substring(0, 63)
+    const name = sanitizeName(value)
     const updated = services.map((s, i) =>
       i === index ? { ...s, name } : s
     )
     onChange(updated)
   }
+
+  // Check for duplicate names
+  const getDuplicateNames = () => {
+    const names = services.filter(s => s.selected).map(s => s.name)
+    const seen = new Set()
+    const duplicates = new Set()
+    for (const name of names) {
+      if (seen.has(name)) {
+        duplicates.add(name)
+      }
+      seen.add(name)
+    }
+    return duplicates
+  }
+
+  const duplicateNames = getDuplicateNames()
 
   const getSourceDisplay = (service) => {
     if (service.image) {
@@ -137,15 +171,18 @@ export function ServiceTable({
                 value={service.name}
                 onChange={(e) => handleNameChange(index, e.target.value)}
                 className={`
-                  w-full bg-transparent border-b border-transparent
-                  focus:border-terminal-primary focus:outline-none
+                  w-full bg-transparent border-b
+                  focus:outline-none
                   text-sm
-                  ${service.selected
-                    ? 'text-terminal-primary'
-                    : 'text-terminal-muted'
+                  ${duplicateNames.has(service.name) && service.selected
+                    ? 'border-terminal-red text-terminal-red'
+                    : service.selected
+                      ? 'border-transparent focus:border-terminal-primary text-terminal-primary'
+                      : 'border-transparent text-terminal-muted'
                   }
                 `}
                 disabled={!service.selected}
+                title={duplicateNames.has(service.name) ? 'Duplicate name - please rename' : ''}
               />
             </div>
 
@@ -202,8 +239,15 @@ export function ServiceTable({
       </div>
 
       {/* Summary */}
-      <div className="px-3 py-2 border-t border-terminal-border bg-terminal-bg-secondary text-xs text-terminal-muted">
-        {services.filter(s => s.selected).length} of {services.length} service(s) selected
+      <div className="px-3 py-2 border-t border-terminal-border bg-terminal-bg-secondary text-xs">
+        <span className="text-terminal-muted">
+          {services.filter(s => s.selected).length} of {services.length} service(s) selected
+        </span>
+        {duplicateNames.size > 0 && (
+          <span className="text-terminal-red ml-4">
+            ! Duplicate names detected: {Array.from(duplicateNames).join(', ')}
+          </span>
+        )}
       </div>
     </div>
   )

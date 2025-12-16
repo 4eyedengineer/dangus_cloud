@@ -135,6 +135,18 @@ export function NewProjectWizard({ onComplete, onCancel }) {
     }
   }
 
+  // Check for duplicate service names
+  const getDuplicateNames = () => {
+    const names = services.filter(s => s.selected).map(s => s.name)
+    const seen = new Set()
+    const duplicates = new Set()
+    for (const name of names) {
+      if (seen.has(name)) duplicates.add(name)
+      seen.add(name)
+    }
+    return duplicates
+  }
+
   const handleCreateWithServices = async () => {
     const selectedServices = services.filter(s => s.selected)
     if (selectedServices.length === 0) {
@@ -142,12 +154,20 @@ export function NewProjectWizard({ onComplete, onCancel }) {
       return
     }
 
+    // Check for duplicate names
+    const duplicates = getDuplicateNames()
+    if (duplicates.size > 0) {
+      setError(`Duplicate service names: ${Array.from(duplicates).join(', ')}. Please rename them.`)
+      return
+    }
+
     setCreating(true)
     setError(null)
 
+    let project = null
     try {
       // Create project first
-      const project = await createProject(projectName)
+      project = await createProject(projectName)
 
       // Transform services for batch creation
       // If service has a build config, it needs repo_url to build from source
@@ -170,7 +190,9 @@ export function NewProjectWizard({ onComplete, onCancel }) {
       // Create services
       const result = await createServicesBatch(project.id, serviceData)
 
-      toast.success(`Created project with ${result.summary.created} service(s)`)
+      if (result.summary.created > 0) {
+        toast.success(`Created project with ${result.summary.created} service(s)`)
+      }
 
       if (result.errors?.length > 0) {
         toast.warning(`${result.errors.length} service(s) failed to create`)
@@ -178,8 +200,15 @@ export function NewProjectWizard({ onComplete, onCancel }) {
 
       onComplete(project)
     } catch (err) {
-      setError(err.message || 'Failed to create project')
-      setCreating(false)
+      // If project was created but services failed, still navigate to project
+      if (project) {
+        toast.error(`Services failed: ${err.message}`)
+        toast.info('Project created. You can add services manually.')
+        onComplete(project)
+      } else {
+        setError(err.message || 'Failed to create project')
+        setCreating(false)
+      }
     }
   }
 

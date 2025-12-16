@@ -323,6 +323,20 @@ export default async function serviceRoutes(fastify, options) {
       });
     }
 
+    // Check for duplicate service names in the request (after normalization)
+    const normalizedNames = services.map(svc => validateServiceName(svc.name).name);
+    const seenNames = new Set();
+    for (let i = 0; i < normalizedNames.length; i++) {
+      const name = normalizedNames[i];
+      if (seenNames.has(name)) {
+        return reply.code(400).send({
+          error: 'Bad Request',
+          message: `Duplicate service name "${name}" in request`
+        });
+      }
+      seenNames.add(name);
+    }
+
     // Validate all service names and env vars upfront
     for (const svc of services) {
       const validation = validateServiceName(svc.name);
@@ -342,10 +356,22 @@ export default async function serviceRoutes(fastify, options) {
       }
 
       // Validate environment variable keys if provided
-      // Note: Keys are uppercased during insert, so validate the uppercased version
       if (svc.env_vars && svc.env_vars.length > 0) {
+        const seenKeys = new Set();
         for (const env of svc.env_vars) {
-          const keyValidation = validateEnvVarKey(env.key.toUpperCase());
+          const upperKey = env.key.toUpperCase();
+
+          // Check for duplicate keys within this service
+          if (seenKeys.has(upperKey)) {
+            return reply.code(400).send({
+              error: 'Bad Request',
+              message: `Duplicate env var key "${env.key}" in service "${svc.name}"`
+            });
+          }
+          seenKeys.add(upperKey);
+
+          // Validate key format
+          const keyValidation = validateEnvVarKey(upperKey);
           if (!keyValidation.valid) {
             return reply.code(400).send({
               error: 'Bad Request',
@@ -386,6 +412,15 @@ export default async function serviceRoutes(fastify, options) {
         const webhookSecret = generateWebhookSecret();
 
         // Insert service
+        // Note: Schema defaults are applied by Fastify, so svc.branch and svc.dockerfile_path
+        // should already have default values. We log if they're missing as this indicates a bug.
+        if (!svc.branch) {
+          fastify.log.warn(`Service "${serviceName}" missing branch - schema default should have applied`);
+        }
+        if (!svc.dockerfile_path) {
+          fastify.log.warn(`Service "${serviceName}" missing dockerfile_path - schema default should have applied`);
+        }
+
         const result = await client.query(
           `INSERT INTO services (
             project_id, name, repo_url, branch, dockerfile_path,
@@ -397,12 +432,12 @@ export default async function serviceRoutes(fastify, options) {
             projectId,
             serviceName,
             svc.repo_url || null,
-            svc.branch || 'main',
-            svc.dockerfile_path || 'Dockerfile',
+            svc.branch,  // Schema default: 'main'
+            svc.dockerfile_path,  // Schema default: 'Dockerfile'
             svc.build_context || null,
             svc.image || null,
             svc.port,
-            svc.replicas || 1,
+            svc.replicas,  // Schema default: 1
             svc.storage_gb || null,
             svc.health_check_path || null,
             webhookSecret

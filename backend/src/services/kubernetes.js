@@ -1,5 +1,6 @@
 import fs from 'fs';
 import https from 'https';
+import logger from './logger.js';
 
 const K8S_API_SERVER = process.env.KUBERNETES_SERVICE_HOST
   ? `https://${process.env.KUBERNETES_SERVICE_HOST}:${process.env.KUBERNETES_SERVICE_PORT}`
@@ -11,15 +12,27 @@ const CA_PATH = '/var/run/secrets/kubernetes.io/serviceaccount/ca.crt';
 function getServiceAccountToken() {
   try {
     return fs.readFileSync(TOKEN_PATH, 'utf8').trim();
-  } catch {
-    return process.env.KUBERNETES_TOKEN || null;
+  } catch (err) {
+    // Running outside cluster - use environment token
+    logger.debug('Service account token file not found, using KUBERNETES_TOKEN env var', {
+      error: err.code
+    });
+    const envToken = process.env.KUBERNETES_TOKEN;
+    if (!envToken) {
+      logger.error('No Kubernetes authentication available - neither service account nor KUBERNETES_TOKEN');
+    }
+    return envToken || null;
   }
 }
 
 function getCA() {
   try {
     return fs.readFileSync(CA_PATH, 'utf8');
-  } catch {
+  } catch (err) {
+    // Running outside cluster - CA not available
+    logger.debug('Kubernetes CA file not found, TLS verification may be disabled', {
+      error: err.code
+    });
     return null;
   }
 }
@@ -59,7 +72,12 @@ async function k8sRequest(method, path, body = null) {
     try {
       const errorJson = JSON.parse(errorText);
       errorMessage = errorJson.message || errorText;
-    } catch {
+    } catch (parseErr) {
+      // API returned non-JSON error response
+      logger.debug('Kubernetes API returned non-JSON error', {
+        status: response.status,
+        contentType: response.headers.get('content-type')
+      });
       errorMessage = errorText;
     }
     const error = new Error(`Kubernetes API error: ${errorMessage}`);

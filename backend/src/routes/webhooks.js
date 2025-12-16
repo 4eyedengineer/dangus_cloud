@@ -5,10 +5,12 @@ import crypto from 'crypto';
  * @param {string} payload - Raw request body
  * @param {string} signature - x-hub-signature-256 header value
  * @param {string} secret - Webhook secret for this service
+ * @param {object} logger - Logger instance
  * @returns {boolean} True if signature is valid
  */
-function verifySignature(payload, signature, secret) {
+function verifySignature(payload, signature, secret, logger) {
   if (!signature || !secret) {
+    logger?.warn('Webhook signature verification failed: missing signature or secret');
     return false;
   }
 
@@ -22,7 +24,14 @@ function verifySignature(payload, signature, secret) {
       Buffer.from(signature),
       Buffer.from(expected)
     );
-  } catch {
+  } catch (err) {
+    // timingSafeEqual throws if buffers have different lengths
+    // This indicates a malformed or incorrect signature
+    logger?.warn('Webhook signature verification failed: signature length mismatch', {
+      signatureLength: signature?.length,
+      expectedLength: expected?.length,
+      error: err.message
+    });
     return false;
   }
 }
@@ -112,7 +121,7 @@ export default async function webhookRoutes(fastify, options) {
     }
 
     // Verify signature
-    if (!verifySignature(request.rawBody, signature, service.webhook_secret)) {
+    if (!verifySignature(request.rawBody, signature, service.webhook_secret, fastify.log)) {
       fastify.log.warn({ msg: 'Invalid webhook signature', serviceId, deliveryId });
       return reply.code(400).send({
         error: 'Bad Request',

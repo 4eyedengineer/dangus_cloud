@@ -7,6 +7,7 @@ import {
   getPodsByLabel,
   getPodLogs,
 } from './kubernetes.js';
+import logger from './logger.js';
 import {
   generateKanikoJobManifest,
   generateDeploymentManifest,
@@ -118,8 +119,12 @@ export async function triggerBuild(db, service, deployment, commitSha, githubTok
     // Cleanup git secret on failure
     try {
       await deleteSecret(namespace, gitSecretName);
-    } catch {
-      // Ignore cleanup errors
+    } catch (cleanupErr) {
+      logger.warn('Failed to cleanup git secret during build failure', {
+        namespace,
+        secretName: gitSecretName,
+        error: cleanupErr.message
+      });
     }
 
     await updateDeploymentStatus(db, deployment.id, 'failed', {
@@ -336,7 +341,12 @@ export async function captureBuildLogs(namespace, jobName) {
       const gitLogs = await getPodLogs(namespace, pod.metadata.name, 'git-clone');
       logs.push('=== Git Clone Logs ===');
       logs.push(gitLogs);
-    } catch {
+    } catch (gitLogErr) {
+      logger.debug('Could not retrieve git-clone logs', {
+        namespace,
+        pod: pod.metadata.name,
+        error: gitLogErr.message
+      });
       logs.push('=== Git Clone Logs ===');
       logs.push('(no logs available)');
     }
@@ -346,7 +356,12 @@ export async function captureBuildLogs(namespace, jobName) {
       const kanikoLogs = await getPodLogs(namespace, pod.metadata.name, 'kaniko');
       logs.push('\n=== Kaniko Build Logs ===');
       logs.push(kanikoLogs);
-    } catch {
+    } catch (kanikoLogErr) {
+      logger.debug('Could not retrieve kaniko logs', {
+        namespace,
+        pod: pod.metadata.name,
+        error: kanikoLogErr.message
+      });
       logs.push('\n=== Kaniko Build Logs ===');
       logs.push('(no logs available)');
     }
@@ -367,15 +382,29 @@ async function cleanupBuildJob(namespace, jobName, gitSecretName) {
   // Delete git credentials secret
   try {
     await deleteSecret(namespace, gitSecretName);
-  } catch {
-    // Ignore cleanup errors
+  } catch (secretErr) {
+    // Log but don't fail - cleanup errors shouldn't break the pipeline
+    if (secretErr.status !== 404) {
+      logger.warn('Failed to cleanup git secret', {
+        namespace,
+        secretName: gitSecretName,
+        error: secretErr.message
+      });
+    }
   }
 
   // Delete job (will cascade delete pods)
   try {
     await deleteJob(namespace, jobName);
-  } catch {
-    // Ignore cleanup errors
+  } catch (jobErr) {
+    // Log but don't fail - cleanup errors shouldn't break the pipeline
+    if (jobErr.status !== 404) {
+      logger.warn('Failed to cleanup build job', {
+        namespace,
+        jobName,
+        error: jobErr.message
+      });
+    }
   }
 }
 

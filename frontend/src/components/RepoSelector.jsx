@@ -100,8 +100,17 @@ export function RepoSelector({
 
       {/* Error Message */}
       {error && (
-        <div className="mb-4 p-3 border border-terminal-red bg-terminal-bg-secondary">
+        <div className="mb-4 p-3 border border-terminal-red bg-terminal-bg-secondary flex items-center justify-between">
           <span className="text-terminal-red">! {error}</span>
+          <TerminalButton
+            variant="secondary"
+            onClick={() => {
+              setError(null)
+              loadRepos(1, debouncedSearch, false)
+            }}
+          >
+            [ RETRY ]
+          </TerminalButton>
         </div>
       )}
 
