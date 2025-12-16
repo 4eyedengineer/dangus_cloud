@@ -1,3 +1,5 @@
+import { getPodsByLabel, streamPodLogs } from '../services/kubernetes.js';
+
 const DEPLOYMENT_STATUSES = ['pending', 'building', 'deploying', 'live', 'failed'];
 const DEFAULT_PAGE_LIMIT = 20;
 
@@ -167,6 +169,191 @@ export default async function deploymentRoutes(fastify, options) {
       build_logs: deployment.build_logs,
       created_at: deployment.created_at,
     };
+  });
+
+  /**
+   * WebSocket endpoint for real-time build log streaming
+   * GET /deployments/:id/logs (WebSocket upgrade)
+   */
+  fastify.get('/deployments/:id/logs', { websocket: true }, async (connection, request) => {
+    const deploymentId = request.params.id;
+    const userId = request.user?.id;
+
+    // Verify authentication
+    if (!userId) {
+      connection.socket.send(JSON.stringify({ type: 'error', message: 'Unauthorized' }));
+      connection.socket.close(4001, 'Unauthorized');
+      return;
+    }
+
+    // Verify deployment ownership
+    const ownershipCheck = await verifyDeploymentOwnership(deploymentId, userId);
+    if (ownershipCheck.error) {
+      connection.socket.send(JSON.stringify({ type: 'error', message: ownershipCheck.error }));
+      connection.socket.close(ownershipCheck.status === 404 ? 4004 : 4003, ownershipCheck.error);
+      return;
+    }
+
+    const { deployment } = ownershipCheck;
+
+    // If deployment is complete, send stored logs and close
+    if (['live', 'failed'].includes(deployment.status)) {
+      connection.socket.send(JSON.stringify({
+        type: 'logs',
+        data: deployment.build_logs || ''
+      }));
+      connection.socket.send(JSON.stringify({
+        type: 'complete',
+        status: deployment.status
+      }));
+      connection.socket.close(1000, 'Deployment complete');
+      return;
+    }
+
+    // Get the service to find namespace info
+    const serviceResult = await fastify.db.query(
+      `SELECT s.*, p.name as project_name
+       FROM services s
+       JOIN projects p ON s.project_id = p.id
+       WHERE s.id = $1`,
+      [deployment.service_id]
+    );
+
+    if (serviceResult.rows.length === 0) {
+      connection.socket.send(JSON.stringify({ type: 'error', message: 'Service not found' }));
+      connection.socket.close(4004, 'Service not found');
+      return;
+    }
+
+    const service = serviceResult.rows[0];
+    const namespace = `dangus-${service.project_name}-${service.name}`.toLowerCase().replace(/[^a-z0-9-]/g, '-');
+
+    // Function to attempt streaming logs from the build pod
+    const attemptLogStream = async () => {
+      try {
+        // Find the Kaniko build pod
+        const jobName = `build-${deployment.id.substring(0, 8)}`;
+        const pods = await getPodsByLabel(namespace, `job-name=${jobName}`);
+
+        if (!pods.items || pods.items.length === 0) {
+          // Pod not yet created, inform client and wait
+          connection.socket.send(JSON.stringify({
+            type: 'status',
+            message: 'Waiting for build pod to start...'
+          }));
+          return false;
+        }
+
+        const pod = pods.items[0];
+        const podPhase = pod.status?.phase;
+
+        if (podPhase === 'Pending') {
+          connection.socket.send(JSON.stringify({
+            type: 'status',
+            message: 'Build pod is starting...'
+          }));
+          return false;
+        }
+
+        // Start streaming logs
+        connection.socket.send(JSON.stringify({
+          type: 'status',
+          message: 'Streaming build logs...'
+        }));
+
+        const logStream = streamPodLogs(namespace, pod.metadata.name);
+
+        logStream.on('data', (chunk) => {
+          if (connection.socket.readyState === 1) { // OPEN
+            connection.socket.send(JSON.stringify({ type: 'log', data: chunk }));
+          }
+        });
+
+        logStream.on('end', async () => {
+          // Check final deployment status
+          const finalResult = await fastify.db.query(
+            'SELECT status FROM deployments WHERE id = $1',
+            [deploymentId]
+          );
+          const finalStatus = finalResult.rows[0]?.status || 'unknown';
+
+          if (connection.socket.readyState === 1) {
+            connection.socket.send(JSON.stringify({ type: 'complete', status: finalStatus }));
+            connection.socket.close(1000, 'Stream complete');
+          }
+        });
+
+        logStream.on('error', (err) => {
+          fastify.log.error(`Log stream error: ${err.message}`);
+          if (connection.socket.readyState === 1) {
+            connection.socket.send(JSON.stringify({ type: 'error', message: err.message }));
+          }
+        });
+
+        // Store the stream reference for cleanup
+        connection.socket.logStream = logStream;
+        return true;
+      } catch (err) {
+        fastify.log.error(`Error setting up log stream: ${err.message}`);
+        connection.socket.send(JSON.stringify({
+          type: 'error',
+          message: `Failed to stream logs: ${err.message}`
+        }));
+        return false;
+      }
+    };
+
+    // Try to start streaming, with retries for pending pod
+    let streaming = await attemptLogStream();
+    let retryCount = 0;
+    const maxRetries = 30; // 30 retries * 2 seconds = 60 seconds max wait
+
+    const retryInterval = setInterval(async () => {
+      if (streaming || retryCount >= maxRetries) {
+        clearInterval(retryInterval);
+        if (!streaming && retryCount >= maxRetries) {
+          connection.socket.send(JSON.stringify({
+            type: 'error',
+            message: 'Timed out waiting for build pod'
+          }));
+          connection.socket.close(4008, 'Timeout');
+        }
+        return;
+      }
+
+      retryCount++;
+
+      // Check if deployment status has changed
+      const statusCheck = await fastify.db.query(
+        'SELECT status, build_logs FROM deployments WHERE id = $1',
+        [deploymentId]
+      );
+      const currentStatus = statusCheck.rows[0]?.status;
+
+      if (['live', 'failed'].includes(currentStatus)) {
+        clearInterval(retryInterval);
+        connection.socket.send(JSON.stringify({
+          type: 'logs',
+          data: statusCheck.rows[0]?.build_logs || ''
+        }));
+        connection.socket.send(JSON.stringify({
+          type: 'complete',
+          status: currentStatus
+        }));
+        connection.socket.close(1000, 'Deployment complete');
+        return;
+      }
+
+      streaming = await attemptLogStream();
+    }, 2000);
+
+    // Clean up on close
+    connection.socket.on('close', () => {
+      clearInterval(retryInterval);
+      if (connection.socket.logStream) {
+        connection.socket.logStream.destroy();
+      }
+    });
   });
 }
 
