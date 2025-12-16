@@ -1,8 +1,9 @@
 import { generateWebhookSecret } from '../services/encryption.js';
 import { deleteDeployment, deleteService, deleteIngress, deletePVC, rolloutRestart, deleteServicePods, getPodMetrics, getDeployment } from '../services/kubernetes.js';
-import { getLatestCommit } from '../services/github.js';
+import { getLatestCommit, getFileContent } from '../services/github.js';
 import { decrypt, encrypt } from '../services/encryption.js';
 import { runBuildPipeline } from '../services/buildPipeline.js';
+import { validateDockerfile } from '../services/dockerfileValidator.js';
 
 const NAME_REGEX = /^[a-z][a-z0-9-]*[a-z0-9]$|^[a-z]$/;
 const NAME_MIN_LENGTH = 1;
@@ -925,6 +926,7 @@ export default async function serviceRoutes(fastify, options) {
   });
 
   /**
+<<<<<<< HEAD
    * POST /services/:id/restart
    * Restart a service without triggering a full rebuild
    */
@@ -943,6 +945,14 @@ export default async function serviceRoutes(fastify, options) {
     const userHash = request.user.hash;
     const serviceId = request.params.id;
     const { type = 'rolling' } = request.body || {};
+=======
+   * POST /services/:id/validate-dockerfile
+   * Validate the Dockerfile for a service before building
+   */
+  fastify.post('/services/:id/validate-dockerfile', { schema: serviceParamsSchema }, async (request, reply) => {
+    const userId = request.user.id;
+    const serviceId = request.params.id;
+>>>>>>> 285df69 (Add Dockerfile validation before build)
 
     // Verify ownership
     const ownershipCheck = await verifyServiceOwnership(serviceId, userId);
@@ -954,6 +964,7 @@ export default async function serviceRoutes(fastify, options) {
     }
 
     const { service } = ownershipCheck;
+<<<<<<< HEAD
     const namespace = computeNamespace(userHash, service.project_name);
 
     try {
@@ -975,6 +986,63 @@ export default async function serviceRoutes(fastify, options) {
       return reply.code(500).send({
         error: 'Internal Server Error',
         message: 'Failed to restart service',
+=======
+
+    // Cannot validate if no repo_url (image-only services)
+    if (!service.repo_url) {
+      return reply.code(400).send({
+        error: 'Bad Request',
+        message: 'Cannot validate Dockerfile for image-only services',
+      });
+    }
+
+    try {
+      // Get user's GitHub token
+      const userResult = await fastify.db.query(
+        'SELECT github_access_token FROM users WHERE id = $1',
+        [userId]
+      );
+
+      if (!userResult.rows[0]?.github_access_token) {
+        return reply.code(400).send({
+          error: 'Bad Request',
+          message: 'GitHub token not configured',
+        });
+      }
+
+      const githubToken = decrypt(userResult.rows[0].github_access_token);
+
+      // Fetch Dockerfile content from GitHub
+      const dockerfilePath = service.dockerfile_path || 'Dockerfile';
+      const fileResult = await getFileContent(
+        githubToken,
+        service.repo_url,
+        dockerfilePath,
+        service.branch
+      );
+
+      if (!fileResult) {
+        return reply.code(404).send({
+          error: 'Not Found',
+          message: `Dockerfile not found at ${dockerfilePath}`,
+        });
+      }
+
+      // Validate the Dockerfile
+      const validationResult = validateDockerfile(fileResult.content);
+
+      fastify.log.info(`Validated Dockerfile for service ${serviceId}: ${validationResult.summary.errorCount} errors, ${validationResult.summary.warningCount} warnings`);
+
+      return {
+        ...validationResult,
+        dockerfile_path: dockerfilePath,
+      };
+    } catch (err) {
+      fastify.log.error(`Failed to validate Dockerfile: ${err.message}`);
+      return reply.code(500).send({
+        error: 'Internal Server Error',
+        message: 'Failed to validate Dockerfile',
+>>>>>>> 285df69 (Add Dockerfile validation before build)
       });
     }
   });

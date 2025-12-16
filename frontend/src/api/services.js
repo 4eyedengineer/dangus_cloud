@@ -57,3 +57,14 @@ export async function createServicesBatch(projectId, services) {
     body: JSON.stringify({ services })
   });
 }
+
+/**
+ * Validate the Dockerfile for a service
+ * @param {string} id - Service ID
+ * @returns {Promise<{valid: boolean, errors: Array, warnings: Array, summary: object, dockerfile_path: string}>}
+ */
+export async function validateDockerfile(id) {
+  return apiFetch(`/services/${id}/validate-dockerfile`, {
+    method: 'POST'
+  });
+}
