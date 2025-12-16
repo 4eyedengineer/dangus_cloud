@@ -14,6 +14,7 @@ import {
   ProjectDetail,
   ServiceDetail,
   NewServiceForm,
+  NewProjectWizard,
   Settings
 } from './pages'
 import { getCurrentUser, logout, getLoginUrl } from './api/auth'
@@ -100,6 +101,15 @@ function AppContent() {
 
   const handleNewService = () => {
     setCurrentView('newService')
+  }
+
+  const handleNewProject = () => {
+    setCurrentView('newProject')
+  }
+
+  const handleNewProjectComplete = async (project) => {
+    setSelectedProject(project)
+    setCurrentView('projectDetail')
   }
 
   const handleServiceSubmit = async (data) => {
@@ -220,6 +230,7 @@ function AppContent() {
         return (
           <Dashboard
             onProjectClick={handleProjectClick}
+            onNewProject={handleNewProject}
           />
         )
       case 'projects':
@@ -249,6 +260,13 @@ function AppContent() {
           <NewServiceForm
             projectId={selectedProject?.id}
             onSubmit={handleServiceSubmit}
+            onCancel={handleBack}
+          />
+        )
+      case 'newProject':
+        return (
+          <NewProjectWizard
+            onComplete={handleNewProjectComplete}
             onCancel={handleBack}
           />
         )

@@ -33,3 +33,16 @@ export async function triggerDeploy(id) {
 export async function fetchWebhookSecret(id) {
   return apiFetch(`/services/${id}/webhook-secret`);
 }
+
+/**
+ * Create multiple services at once
+ * @param {string} projectId - Project ID
+ * @param {Array} services - Array of service configurations
+ * @returns {Promise<{created: Array, errors: Array, summary: object}>}
+ */
+export async function createServicesBatch(projectId, services) {
+  return apiFetch(`/projects/${projectId}/services/batch`, {
+    method: 'POST',
+    body: JSON.stringify({ services })
+  });
+}

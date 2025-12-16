@@ -88,6 +88,16 @@ export async function triggerBuild(db, service, deployment, commitSha, githubTok
     const { owner, repo } = parseGitHubUrl(service.repo_url);
     const repoUrl = `github.com/${owner}/${repo}`;
 
+    // Handle build_context for monorepo setups
+    // If build_context is set, prepend it to dockerfile_path
+    let dockerfilePath;
+    if (service.build_context) {
+      const context = service.build_context.replace(/^\.\//, '').replace(/\/$/, '');
+      dockerfilePath = `./${context}/${service.dockerfile_path}`;
+    } else {
+      dockerfilePath = `./${service.dockerfile_path}`;
+    }
+
     // Generate and apply Kaniko job
     const jobManifest = generateKanikoJobManifest({
       namespace,
@@ -95,7 +105,7 @@ export async function triggerBuild(db, service, deployment, commitSha, githubTok
       repoUrl,
       branch: service.branch,
       commitSha,
-      dockerfilePath: `./${service.dockerfile_path}`,
+      dockerfilePath,
       imageDest: imageTag,
       gitSecretName,
       registrySecretName: REGISTRY_SECRET_NAME,
@@ -235,6 +245,7 @@ export async function deployService(db, service, deployment, imageTag, namespace
       serviceName: service.name,
       image: imageTag,
       port: service.port,
+      replicas: service.replicas || 1,
       envVars: envVars.length > 0 ? envVars : undefined,
       healthCheckPath: service.health_check_path || undefined,
       storageClaimName: service.storage_gb ? `${service.name}-pvc` : undefined,
@@ -396,16 +407,34 @@ export async function getDecryptedEnvVars(db, serviceId) {
 
 /**
  * Run the complete build and deploy pipeline for a service
+ * Handles both repo-based builds and direct image deployments
  * @param {object} db - Database connection
  * @param {object} service - Service object with project_name populated
  * @param {object} deployment - Deployment object
- * @param {string} commitSha - Git commit SHA
- * @param {string} githubToken - Decrypted GitHub token
+ * @param {string} commitSha - Git commit SHA (null for image-only services)
+ * @param {string} githubToken - Decrypted GitHub token (null for image-only services)
  * @param {string} namespace - Kubernetes namespace
  * @param {string} userHash - User hash for subdomain
  */
 export async function runBuildPipeline(db, service, deployment, commitSha, githubToken, namespace, userHash) {
-  // Trigger the build
+  // Get decrypted env vars (needed for both paths)
+  const envVars = await getDecryptedEnvVars(db, service.id);
+
+  // For image-only services (no repo_url), skip build and deploy directly
+  if (service.image && !service.repo_url) {
+    // Update deployment status - skip building phase
+    await updateDeploymentStatus(db, deployment.id, 'deploying', {
+      build_logs: `Using pre-built image: ${service.image}`,
+      image_tag: service.image,
+    });
+
+    // Deploy directly with the specified image
+    await deployService(db, service, deployment, service.image, namespace, userHash, envVars);
+
+    return { success: true, imageTag: service.image };
+  }
+
+  // For repo-based services, run the full build pipeline
   const { jobName, imageTag, gitSecretName } = await triggerBuild(
     db,
     service,
@@ -422,9 +451,6 @@ export async function runBuildPipeline(db, service, deployment, commitSha, githu
   if (!buildResult.success) {
     return { success: false, error: 'Build failed' };
   }
-
-  // Get decrypted env vars
-  const envVars = await getDecryptedEnvVars(db, service.id);
 
   // Deploy the service
   await deployService(db, service, deployment, buildResult.imageTag, namespace, userHash, envVars);

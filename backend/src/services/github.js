@@ -173,3 +173,128 @@ export async function getRepoInfo(token, repoUrl) {
 export function clearCache() {
   cache.clear();
 }
+
+/**
+ * List repositories accessible to the authenticated user
+ * Includes personal repos and repos from organizations the user belongs to
+ * @param {string} token - GitHub personal access token
+ * @param {object} options - Pagination options
+ * @param {number} options.page - Page number (1-indexed)
+ * @param {number} options.perPage - Results per page (max 100)
+ * @returns {Promise<{repos: Array, hasMore: boolean}>}
+ */
+export async function listUserRepos(token, options = {}) {
+  const { page = 1, perPage = 30 } = options;
+  const cacheKey = `repos:${token.slice(-8)}:${page}:${perPage}`;
+
+  const cached = getFromCache(cacheKey);
+  if (cached) return cached;
+
+  const octokit = createOctokit(token);
+
+  const { data } = await octokit.repos.listForAuthenticatedUser({
+    visibility: 'all',
+    affiliation: 'owner,collaborator,organization_member',
+    sort: 'updated',
+    direction: 'desc',
+    per_page: perPage,
+    page
+  });
+
+  const result = {
+    repos: data.map(repo => ({
+      id: repo.id,
+      fullName: repo.full_name,
+      name: repo.name,
+      owner: repo.owner.login,
+      private: repo.private,
+      defaultBranch: repo.default_branch,
+      description: repo.description,
+      updatedAt: repo.updated_at,
+      language: repo.language,
+      url: repo.html_url
+    })),
+    hasMore: data.length === perPage
+  };
+
+  setCache(cacheKey, result);
+  return result;
+}
+
+/**
+ * Get content of a file from a repository
+ * @param {string} token - GitHub personal access token
+ * @param {string} repoUrl - Repository URL
+ * @param {string} filePath - Path to file (e.g., "docker-compose.yml")
+ * @param {string} branch - Branch name (optional, uses default branch if not specified)
+ * @returns {Promise<{content: string, sha: string} | null>} - null if file not found
+ */
+export async function getFileContent(token, repoUrl, filePath, branch) {
+  const { owner, repo } = parseGitHubUrl(repoUrl);
+  const cacheKey = getCacheKey('file', owner, repo, `${branch || 'default'}:${filePath}`);
+
+  const cached = getFromCache(cacheKey);
+  if (cached) return cached;
+
+  const octokit = createOctokit(token);
+
+  try {
+    const params = { owner, repo, path: filePath };
+    if (branch) params.ref = branch;
+
+    const { data } = await octokit.repos.getContent(params);
+
+    // Handle file content (not directory)
+    if (data.type !== 'file') {
+      return null;
+    }
+
+    const content = Buffer.from(data.content, 'base64').toString('utf-8');
+    const result = { content, sha: data.sha };
+
+    setCache(cacheKey, result);
+    return result;
+  } catch (error) {
+    if (error.status === 404) {
+      return null;
+    }
+    throw error;
+  }
+}
+
+/**
+ * Get repository file tree (for finding Dockerfiles in various locations)
+ * @param {string} token - GitHub personal access token
+ * @param {string} repoUrl - Repository URL
+ * @param {string} branch - Branch name (optional, uses default branch if not specified)
+ * @returns {Promise<Array<{path: string, type: string}>>}
+ */
+export async function getRepoTree(token, repoUrl, branch) {
+  const { owner, repo } = parseGitHubUrl(repoUrl);
+
+  // Get default branch if not specified
+  if (!branch) {
+    const repoInfo = await getRepoInfo(token, repoUrl);
+    branch = repoInfo.defaultBranch;
+  }
+
+  const cacheKey = getCacheKey('tree', owner, repo, branch);
+  const cached = getFromCache(cacheKey);
+  if (cached) return cached;
+
+  const octokit = createOctokit(token);
+
+  const { data } = await octokit.git.getTree({
+    owner,
+    repo,
+    tree_sha: branch,
+    recursive: 'true'
+  });
+
+  const result = data.tree
+    .filter(item => item.type === 'blob')
+    .map(item => ({ path: item.path, type: item.type }));
+
+  setCache(cacheKey, result);
+  return result;
+}

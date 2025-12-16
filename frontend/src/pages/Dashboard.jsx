@@ -9,15 +9,12 @@ import { useToast } from '../components/Toast'
 import { fetchProjects, createProject, deleteProject } from '../api/projects'
 import { ApiError } from '../api/utils'
 
-export function Dashboard({ onProjectClick }) {
+export function Dashboard({ onProjectClick, onNewProject }) {
   const [projects, setProjects] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [viewCollapsed, setViewCollapsed] = useState(false)
-  const [showNewProjectModal, setShowNewProjectModal] = useState(false)
   const [showDeleteModal, setShowDeleteModal] = useState(null)
-  const [newProjectName, setNewProjectName] = useState('')
-  const [creating, setCreating] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const toast = useToast()
 
@@ -36,25 +33,6 @@ export function Dashboard({ onProjectClick }) {
       toast.error('Failed to load projects')
     } finally {
       setLoading(false)
-    }
-  }
-
-  const handleCreateProject = async (e) => {
-    e.preventDefault()
-    if (!newProjectName.trim()) return
-
-    setCreating(true)
-    try {
-      const project = await createProject(newProjectName.trim())
-      setProjects(prev => [project, ...prev])
-      setNewProjectName('')
-      setShowNewProjectModal(false)
-      toast.success(`Project "${project.name}" created successfully`)
-    } catch (err) {
-      const message = err instanceof ApiError ? err.message : 'Failed to create project'
-      toast.error(message)
-    } finally {
-      setCreating(false)
     }
   }
 
@@ -130,7 +108,7 @@ export function Dashboard({ onProjectClick }) {
           </p>
         </div>
 
-        <TerminalButton variant="primary" onClick={() => setShowNewProjectModal(true)}>
+        <TerminalButton variant="primary" onClick={onNewProject}>
           [ NEW PROJECT ]
         </TerminalButton>
       </div>
@@ -160,7 +138,7 @@ export function Dashboard({ onProjectClick }) {
           {projects.length === 0 ? (
             <div className="text-center py-12 border border-terminal-border bg-terminal-bg-secondary">
               <p className="font-mono text-terminal-muted mb-4">No projects yet.</p>
-              <TerminalButton variant="primary" onClick={() => setShowNewProjectModal(true)}>
+              <TerminalButton variant="primary" onClick={onNewProject}>
                 [ CREATE YOUR FIRST PROJECT ]
               </TerminalButton>
             </div>
@@ -213,57 +191,6 @@ export function Dashboard({ onProjectClick }) {
           </div>
         </AsciiBox>
       </div>
-
-      {/* New Project Modal */}
-      {showNewProjectModal && (
-        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
-          <div className="w-full max-w-md mx-4">
-            <div className="font-mono whitespace-pre text-terminal-muted select-none">
-              +-- NEW PROJECT ----------------------------+
-            </div>
-            <div className="border-l border-r border-terminal-muted bg-terminal-bg-secondary px-6 py-6">
-              <form onSubmit={handleCreateProject}>
-                <label className="block font-mono text-xs text-terminal-muted uppercase mb-2">
-                  Project Name
-                </label>
-                <TerminalInput
-                  value={newProjectName}
-                  onChange={(e) => setNewProjectName(e.target.value)}
-                  placeholder="my-project"
-                  className="w-full mb-4"
-                  autoFocus
-                />
-                <p className="font-mono text-xs text-terminal-muted mb-6">
-                  Use lowercase letters, numbers, and hyphens only.
-                </p>
-                <div className="flex justify-end gap-3">
-                  <TerminalButton
-                    type="button"
-                    variant="secondary"
-                    onClick={() => {
-                      setShowNewProjectModal(false)
-                      setNewProjectName('')
-                    }}
-                    disabled={creating}
-                  >
-                    [ CANCEL ]
-                  </TerminalButton>
-                  <TerminalButton
-                    type="submit"
-                    variant="primary"
-                    disabled={creating || !newProjectName.trim()}
-                  >
-                    {creating ? '[ CREATING... ]' : '[ CREATE ]'}
-                  </TerminalButton>
-                </div>
-              </form>
-            </div>
-            <div className="font-mono whitespace-pre text-terminal-muted select-none">
-              +--------------------------------------------+
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Delete Confirmation Modal */}
       {showDeleteModal && (

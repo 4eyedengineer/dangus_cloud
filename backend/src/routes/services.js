@@ -68,12 +68,14 @@ export default async function serviceRoutes(fastify, options) {
   const createServiceSchema = {
     body: {
       type: 'object',
-      required: ['name', 'repo_url', 'port'],
+      required: ['name', 'port'],
       properties: {
         name: { type: 'string' },
         repo_url: { type: 'string' },
+        image: { type: 'string' },
         branch: { type: 'string', default: 'main' },
         dockerfile_path: { type: 'string', default: 'Dockerfile' },
+        build_context: { type: 'string' },
         port: { type: 'integer', minimum: 1, maximum: 65535 },
         replicas: { type: 'integer', minimum: 1, maximum: 3, default: 1 },
         storage_gb: { type: 'integer', minimum: 1, maximum: 10 },
@@ -108,6 +110,7 @@ export default async function serviceRoutes(fastify, options) {
       properties: {
         branch: { type: 'string' },
         dockerfile_path: { type: 'string' },
+        build_context: { type: 'string' },
         port: { type: 'integer', minimum: 1, maximum: 65535 },
         replicas: { type: 'integer', minimum: 1, maximum: 3 },
         storage_gb: { type: 'integer', minimum: 1, maximum: 10 },
@@ -196,13 +199,23 @@ export default async function serviceRoutes(fastify, options) {
     const serviceName = validation.name;
     const {
       repo_url,
+      image,
       branch = 'main',
       dockerfile_path = 'Dockerfile',
+      build_context,
       port,
       replicas = 1,
       storage_gb,
       health_check_path,
     } = request.body;
+
+    // Validate that either repo_url or image is provided
+    if (!repo_url && !image) {
+      return reply.code(400).send({
+        error: 'Bad Request',
+        message: 'Either repo_url or image must be provided',
+      });
+    }
 
     try {
       // Check if service name already exists for this project
@@ -223,10 +236,10 @@ export default async function serviceRoutes(fastify, options) {
 
       // Insert into database
       const result = await fastify.db.query(
-        `INSERT INTO services (project_id, name, repo_url, branch, dockerfile_path, port, replicas, storage_gb, health_check_path, webhook_secret)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-         RETURNING id, name, repo_url, branch, dockerfile_path, port, replicas, storage_gb, health_check_path, created_at`,
-        [projectId, serviceName, repo_url, branch, dockerfile_path, port, replicas, storage_gb || null, health_check_path || null, webhookSecret]
+        `INSERT INTO services (project_id, name, repo_url, image, branch, dockerfile_path, build_context, port, replicas, storage_gb, health_check_path, webhook_secret)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+         RETURNING id, name, repo_url, image, branch, dockerfile_path, build_context, port, replicas, storage_gb, health_check_path, created_at`,
+        [projectId, serviceName, repo_url || null, image || null, branch, dockerfile_path, build_context || null, port, replicas, storage_gb || null, health_check_path || null, webhookSecret]
       );
 
       const service = result.rows[0];
@@ -246,6 +259,198 @@ export default async function serviceRoutes(fastify, options) {
         error: 'Internal Server Error',
         message: 'Failed to create service',
       });
+    }
+  });
+
+  /**
+   * POST /projects/:projectId/services/batch
+   * Create multiple services at once (for importing from docker-compose)
+   */
+  fastify.post('/projects/:projectId/services/batch', {
+    schema: {
+      params: projectParamsSchema.params,
+      body: {
+        type: 'object',
+        required: ['services'],
+        properties: {
+          services: {
+            type: 'array',
+            minItems: 1,
+            maxItems: 10,
+            items: {
+              type: 'object',
+              required: ['name', 'port'],
+              properties: {
+                name: { type: 'string' },
+                repo_url: { type: 'string' },
+                branch: { type: 'string', default: 'main' },
+                dockerfile_path: { type: 'string', default: 'Dockerfile' },
+                build_context: { type: 'string' },
+                image: { type: 'string' },
+                port: { type: 'integer', minimum: 1, maximum: 65535 },
+                replicas: { type: 'integer', minimum: 1, maximum: 3, default: 1 },
+                storage_gb: { type: 'integer', minimum: 1, maximum: 10 },
+                health_check_path: { type: 'string' },
+                env_vars: {
+                  type: 'array',
+                  items: {
+                    type: 'object',
+                    required: ['key', 'value'],
+                    properties: {
+                      key: { type: 'string' },
+                      value: { type: 'string' }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }, async (request, reply) => {
+    const userId = request.user.id;
+    const userHash = request.user.hash;
+    const projectId = request.params.projectId;
+    const { services } = request.body;
+
+    // Verify project ownership
+    const ownershipCheck = await verifyProjectOwnership(projectId, userId);
+    if (ownershipCheck.error) {
+      return reply.code(ownershipCheck.status).send({
+        error: ownershipCheck.status === 404 ? 'Not Found' : 'Forbidden',
+        message: ownershipCheck.error,
+      });
+    }
+
+    // Validate all service names and env vars upfront
+    for (const svc of services) {
+      const validation = validateServiceName(svc.name);
+      if (!validation.valid) {
+        return reply.code(400).send({
+          error: 'Bad Request',
+          message: `Invalid service name "${svc.name}": ${validation.error}`
+        });
+      }
+
+      // Ensure either repo_url or image is provided
+      if (!svc.repo_url && !svc.image) {
+        return reply.code(400).send({
+          error: 'Bad Request',
+          message: `Service "${svc.name}" must have either repo_url or image`
+        });
+      }
+
+      // Validate environment variable keys if provided
+      // Note: Keys are uppercased during insert, so validate the uppercased version
+      if (svc.env_vars && svc.env_vars.length > 0) {
+        for (const env of svc.env_vars) {
+          const keyValidation = validateEnvVarKey(env.key.toUpperCase());
+          if (!keyValidation.valid) {
+            return reply.code(400).send({
+              error: 'Bad Request',
+              message: `Invalid env var key "${env.key}" in service "${svc.name}": ${keyValidation.error}`
+            });
+          }
+        }
+      }
+    }
+
+    const createdServices = [];
+    const errors = [];
+
+    // Use transaction for atomic batch creation
+    const client = await fastify.db.connect();
+
+    try {
+      await client.query('BEGIN');
+
+      for (const svc of services) {
+        const serviceName = validateServiceName(svc.name).name;
+
+        // Check for existing service
+        const existing = await client.query(
+          'SELECT id FROM services WHERE project_id = $1 AND name = $2',
+          [projectId, serviceName]
+        );
+
+        if (existing.rows.length > 0) {
+          errors.push({
+            name: svc.name,
+            error: 'Service already exists'
+          });
+          continue;
+        }
+
+        // Generate webhook secret
+        const webhookSecret = generateWebhookSecret();
+
+        // Insert service
+        const result = await client.query(
+          `INSERT INTO services (
+            project_id, name, repo_url, branch, dockerfile_path,
+            build_context, image, port, replicas, storage_gb,
+            health_check_path, webhook_secret
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+          RETURNING id, name, repo_url, branch, dockerfile_path, build_context, image, port, replicas, storage_gb, health_check_path, created_at`,
+          [
+            projectId,
+            serviceName,
+            svc.repo_url || null,
+            svc.branch || 'main',
+            svc.dockerfile_path || 'Dockerfile',
+            svc.build_context || null,
+            svc.image || null,
+            svc.port,
+            svc.replicas || 1,
+            svc.storage_gb || null,
+            svc.health_check_path || null,
+            webhookSecret
+          ]
+        );
+
+        const service = result.rows[0];
+
+        // Create environment variables if provided
+        if (svc.env_vars && svc.env_vars.length > 0) {
+          for (const env of svc.env_vars) {
+            const encryptedValue = encrypt(env.value);
+            await client.query(
+              'INSERT INTO env_vars (service_id, key, value) VALUES ($1, $2, $3)',
+              [service.id, env.key.toUpperCase(), encryptedValue]
+            );
+          }
+        }
+
+        createdServices.push({
+          ...service,
+          subdomain: computeSubdomain(userHash, serviceName),
+          webhook_url: computeWebhookUrl(service.id)
+        });
+      }
+
+      await client.query('COMMIT');
+
+      fastify.log.info(`Batch created ${createdServices.length} services in project ${projectId}`);
+
+      return reply.code(201).send({
+        created: createdServices,
+        errors: errors.length > 0 ? errors : undefined,
+        summary: {
+          requested: services.length,
+          created: createdServices.length,
+          failed: errors.length
+        }
+      });
+    } catch (err) {
+      await client.query('ROLLBACK');
+      fastify.log.error(`Batch create failed: ${err.message}`);
+      return reply.code(500).send({
+        error: 'Internal Server Error',
+        message: 'Failed to create services'
+      });
+    } finally {
+      client.release();
     }
   });
 
@@ -289,8 +494,10 @@ export default async function serviceRoutes(fastify, options) {
         project_id: service.project_id,
         name: service.name,
         repo_url: service.repo_url,
+        image: service.image,
         branch: service.branch,
         dockerfile_path: service.dockerfile_path,
+        build_context: service.build_context,
         port: service.port,
         replicas: service.replicas,
         storage_gb: service.storage_gb,
@@ -328,7 +535,7 @@ export default async function serviceRoutes(fastify, options) {
       });
     }
 
-    const allowedFields = ['branch', 'dockerfile_path', 'port', 'replicas', 'storage_gb', 'health_check_path'];
+    const allowedFields = ['branch', 'dockerfile_path', 'build_context', 'port', 'replicas', 'storage_gb', 'health_check_path'];
     const updates = {};
 
     for (const field of allowedFields) {
@@ -362,7 +569,7 @@ export default async function serviceRoutes(fastify, options) {
         `UPDATE services
          SET ${setClauses.join(', ')}
          WHERE id = $${paramIndex}
-         RETURNING id, name, repo_url, branch, dockerfile_path, port, replicas, storage_gb, health_check_path, created_at`,
+         RETURNING id, name, repo_url, image, branch, dockerfile_path, build_context, port, replicas, storage_gb, health_check_path, created_at`,
         values
       );
 
@@ -460,7 +667,27 @@ export default async function serviceRoutes(fastify, options) {
     const { service } = ownershipCheck;
 
     try {
-      // Get the user's GitHub token
+      // For image-only services (no repo_url), we don't need GitHub token or commit info
+      if (service.image && !service.repo_url) {
+        // Create deployment record for image-only service
+        const result = await fastify.db.query(
+          `INSERT INTO deployments (service_id, commit_sha, status)
+           VALUES ($1, $2, 'pending')
+           RETURNING id, service_id, commit_sha, status, created_at`,
+          [serviceId, 'image-deploy']
+        );
+
+        const deployment = result.rows[0];
+
+        fastify.log.info(`Created image deployment ${deployment.id} for service ${serviceId} using ${service.image}`);
+
+        return reply.code(201).send({
+          ...deployment,
+          image: service.image,
+        });
+      }
+
+      // For repo-based services, get GitHub token and commit info
       const userResult = await fastify.db.query(
         'SELECT github_access_token FROM users WHERE id = $1',
         [userId]
