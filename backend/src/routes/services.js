@@ -1,5 +1,5 @@
 import { generateWebhookSecret } from '../services/encryption.js';
-import { deleteDeployment, deleteService, deleteIngress, deletePVC } from '../services/kubernetes.js';
+import { deleteDeployment, deleteService, deleteIngress, deletePVC, rolloutRestart, deleteServicePods } from '../services/kubernetes.js';
 import { getLatestCommit } from '../services/github.js';
 import { decrypt, encrypt } from '../services/encryption.js';
 import { runBuildPipeline } from '../services/buildPipeline.js';
@@ -782,6 +782,61 @@ export default async function serviceRoutes(fastify, options) {
       return reply.code(500).send({
         error: 'Internal Server Error',
         message: 'Failed to trigger deployment',
+      });
+    }
+  });
+
+  /**
+   * POST /services/:id/restart
+   * Restart a service without triggering a full rebuild
+   */
+  fastify.post('/services/:id/restart', {
+    schema: {
+      ...serviceParamsSchema,
+      body: {
+        type: 'object',
+        properties: {
+          type: { type: 'string', enum: ['rolling', 'hard'], default: 'rolling' }
+        }
+      }
+    }
+  }, async (request, reply) => {
+    const userId = request.user.id;
+    const userHash = request.user.hash;
+    const serviceId = request.params.id;
+    const { type = 'rolling' } = request.body || {};
+
+    // Verify ownership
+    const ownershipCheck = await verifyServiceOwnership(serviceId, userId);
+    if (ownershipCheck.error) {
+      return reply.code(ownershipCheck.status).send({
+        error: ownershipCheck.status === 404 ? 'Not Found' : 'Forbidden',
+        message: ownershipCheck.error,
+      });
+    }
+
+    const { service } = ownershipCheck;
+    const namespace = computeNamespace(userHash, service.project_name);
+
+    try {
+      if (type === 'rolling') {
+        await rolloutRestart(namespace, service.name);
+        fastify.log.info(`Rolling restart initiated for service ${service.name} in ${namespace}`);
+      } else {
+        await deleteServicePods(namespace, service.name);
+        fastify.log.info(`Hard restart initiated for service ${service.name} in ${namespace}`);
+      }
+
+      return {
+        success: true,
+        message: 'Service restart initiated',
+        type
+      };
+    } catch (err) {
+      fastify.log.error(`Failed to restart service: ${err.message}`);
+      return reply.code(500).send({
+        error: 'Internal Server Error',
+        message: 'Failed to restart service',
       });
     }
   });

@@ -30,6 +30,13 @@ export async function triggerDeploy(id) {
   });
 }
 
+export async function restartService(id, type = 'rolling') {
+  return apiFetch(`/services/${id}/restart`, {
+    method: 'POST',
+    body: JSON.stringify({ type }),
+  });
+}
+
 export async function fetchWebhookSecret(id) {
   return apiFetch(`/services/${id}/webhook-secret`);
 }

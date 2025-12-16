@@ -37,7 +37,7 @@ function getCA() {
   }
 }
 
-async function k8sRequest(method, path, body = null) {
+async function k8sRequest(method, path, body = null, contentType = 'application/json') {
   const token = getServiceAccountToken();
   if (!token) {
     throw new Error('Kubernetes authentication not configured');
@@ -54,7 +54,7 @@ async function k8sRequest(method, path, body = null) {
       method,
       headers: {
         'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
+        'Content-Type': contentType,
         'Accept': 'application/json',
       },
       // TLS options
@@ -344,4 +344,32 @@ export function streamPodLogs(namespace, podName, container = null) {
   req.end();
 
   return stream;
+}
+
+export async function rolloutRestart(namespace, deploymentName) {
+  const patch = {
+    spec: {
+      template: {
+        metadata: {
+          annotations: {
+            'kubectl.kubernetes.io/restartedAt': new Date().toISOString()
+          }
+        }
+      }
+    }
+  };
+
+  return k8sRequest(
+    'PATCH',
+    `/apis/apps/v1/namespaces/${namespace}/deployments/${deploymentName}`,
+    patch,
+    'application/strategic-merge-patch+json'
+  );
+}
+
+export async function deleteServicePods(namespace, serviceName) {
+  return k8sRequest(
+    'DELETE',
+    `/api/v1/namespaces/${namespace}/pods?labelSelector=app=${encodeURIComponent(serviceName)}`
+  );
 }

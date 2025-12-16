@@ -7,7 +7,7 @@ import TerminalInput from '../components/TerminalInput'
 import TerminalSpinner from '../components/TerminalSpinner'
 import { useToast } from '../components/Toast'
 import { BuildLogViewer } from '../components/BuildLogViewer'
-import { fetchService, triggerDeploy, fetchWebhookSecret } from '../api/services'
+import { fetchService, triggerDeploy, fetchWebhookSecret, restartService } from '../api/services'
 import { fetchEnvVars, createEnvVar, updateEnvVar, deleteEnvVar, revealEnvVar } from '../api/envVars'
 import { fetchDeployments } from '../api/deployments'
 import { ApiError } from '../api/utils'
@@ -40,6 +40,8 @@ export function ServiceDetail({ serviceId, onBack }) {
   const [envSubmitting, setEnvSubmitting] = useState(false)
 
   const [deploying, setDeploying] = useState(false)
+  const [restarting, setRestarting] = useState(false)
+  const [showRestartMenu, setShowRestartMenu] = useState(false)
   const [lastNotifiedStatus, setLastNotifiedStatus] = useState(null)
 
   const toast = useToast()
@@ -256,6 +258,22 @@ export function ServiceDetail({ serviceId, onBack }) {
     }
   }
 
+  const handleRestart = async (type = 'rolling') => {
+    setRestarting(true)
+    setShowRestartMenu(false)
+    try {
+      await restartService(serviceId, type)
+      toast.success(`Service restart initiated (${type})`)
+      // Refresh service data after a short delay to allow pods to restart
+      setTimeout(loadServiceData, 2000)
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'Failed to restart service'
+      toast.error(message)
+    } finally {
+      setRestarting(false)
+    }
+  }
+
   const formatDate = (dateStr) => {
     const date = new Date(dateStr)
     return date.toISOString().replace('T', ' ').substring(0, 19)
@@ -398,6 +416,31 @@ export function ServiceDetail({ serviceId, onBack }) {
           >
             {deploying ? '[ DEPLOYING... ]' : '[ DEPLOY ]'}
           </TerminalButton>
+          <div className="relative">
+            <TerminalButton
+              variant="secondary"
+              onClick={() => setShowRestartMenu(!showRestartMenu)}
+              disabled={restarting}
+            >
+              {restarting ? '[ RESTARTING... ]' : '[ RESTART ▼ ]'}
+            </TerminalButton>
+            {showRestartMenu && (
+              <div className="absolute right-0 mt-1 w-48 border border-terminal-border bg-terminal-bg-secondary z-10">
+                <button
+                  className="w-full text-left px-3 py-2 font-mono text-sm text-terminal-primary hover:bg-terminal-bg-elevated transition-colors"
+                  onClick={() => handleRestart('rolling')}
+                >
+                  Rolling Restart
+                </button>
+                <button
+                  className="w-full text-left px-3 py-2 font-mono text-sm text-terminal-primary hover:bg-terminal-bg-elevated transition-colors border-t border-terminal-border"
+                  onClick={() => handleRestart('hard')}
+                >
+                  Hard Restart
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
