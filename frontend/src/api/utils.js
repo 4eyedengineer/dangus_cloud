@@ -32,13 +32,16 @@ export class ApiError extends Error {
 export async function apiFetch(endpoint, options = {}) {
   const url = `${API_BASE_URL}${endpoint}`;
 
+  // Only set Content-Type if there's a body (avoids Fastify empty JSON body error)
+  const headers = { ...options.headers };
+  if (options.body) {
+    headers['Content-Type'] = 'application/json';
+  }
+
   const response = await fetch(url, {
     ...options,
     credentials: 'include',
-    headers: {
-      'Content-Type': 'application/json',
-      ...options.headers,
-    },
+    headers,
   });
 
   if (!response.ok) {

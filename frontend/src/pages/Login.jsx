@@ -30,8 +30,9 @@ export function Login({ onLogin }) {
   }, [])
 
   const handleGitHubLogin = () => {
-    // Redirect to GitHub OAuth
-    window.location.href = '/api/auth/github'
+    if (onLogin) {
+      onLogin()
+    }
   }
 
   return (

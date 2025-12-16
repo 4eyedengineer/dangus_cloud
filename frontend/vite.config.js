@@ -9,7 +9,8 @@ export default defineConfig({
     allowedHosts: true,
     proxy: {
       '/api': {
-        target: 'http://localhost:3001',
+        // Use backend service name in K8s, localhost for local dev
+        target: process.env.VITE_API_PROXY_TARGET || 'http://backend:3001',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api/, ''),
       },

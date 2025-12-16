@@ -37,14 +37,63 @@ export function ServiceDetail({ serviceId, onBack }) {
   const [envSubmitting, setEnvSubmitting] = useState(false)
 
   const [deploying, setDeploying] = useState(false)
+  const [lastNotifiedStatus, setLastNotifiedStatus] = useState(null)
 
   const toast = useToast()
 
+  // Check if any deployment is in progress
+  const hasActiveDeployment = () => {
+    if (!deployments.length) return false
+    const latestStatus = deployments[0]?.status
+    return ['pending', 'building', 'deploying'].includes(latestStatus)
+  }
+
+  // Initial load
   useEffect(() => {
     if (serviceId) {
       loadServiceData()
     }
   }, [serviceId])
+
+  // Real-time polling when deployment is in progress
+  useEffect(() => {
+    if (!serviceId || loading) return
+
+    const shouldPoll = hasActiveDeployment()
+    if (!shouldPoll) return
+
+    const pollInterval = setInterval(async () => {
+      try {
+        const [serviceData, deploymentsData] = await Promise.all([
+          fetchService(serviceId),
+          fetchDeployments(serviceId)
+        ])
+        setService(serviceData)
+
+        const newDeployments = deploymentsData.deployments || []
+        const latestDeploymentId = newDeployments[0]?.id
+        const latestStatus = newDeployments[0]?.status
+
+        // Only notify once per status change per deployment
+        const notifyKey = `${latestDeploymentId}-${latestStatus}`
+        if (notifyKey !== lastNotifiedStatus) {
+          if (latestStatus === 'live') {
+            toast.success('Deployment completed successfully!')
+            setLastNotifiedStatus(notifyKey)
+          } else if (latestStatus === 'failed') {
+            toast.error('Deployment failed')
+            setLastNotifiedStatus(notifyKey)
+          }
+        }
+
+        setDeployments(newDeployments)
+      } catch (err) {
+        console.error('Polling error:', err)
+      }
+    }, 3000) // Poll every 3 seconds
+
+    return () => clearInterval(pollInterval)
+  }, [serviceId, loading, deployments, lastNotifiedStatus])
 
   const loadServiceData = async () => {
     setLoading(true)
@@ -289,6 +338,12 @@ export function ServiceDetail({ serviceId, onBack }) {
               status={getServiceStatusIndicator()}
               label={getStatusText(service.latest_deployment?.status || 'pending')}
             />
+            {hasActiveDeployment() && (
+              <span className="font-mono text-xs text-terminal-cyan animate-pulse flex items-center gap-1">
+                <span className="inline-block w-2 h-2 bg-terminal-cyan rounded-full animate-ping" />
+                AUTO-REFRESHING
+              </span>
+            )}
             <span className="font-mono text-xs text-terminal-muted">
               Port: <span className="text-terminal-secondary">:{service.port}</span>
             </span>
@@ -296,6 +351,26 @@ export function ServiceDetail({ serviceId, onBack }) {
               Branch: <span className="text-terminal-secondary">{service.branch || 'main'}</span>
             </span>
           </div>
+          {/* Live URL - shown prominently when service is deployed */}
+          {service.url && service.latest_deployment?.status === 'live' && (
+            <div className="mt-3 flex items-center gap-2">
+              <span className="font-mono text-xs text-terminal-muted">LIVE AT:</span>
+              <a
+                href={service.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-mono text-sm text-terminal-cyan hover:text-terminal-primary hover:underline transition-colors"
+              >
+                {service.url}
+              </a>
+              <button
+                onClick={() => handleCopy(service.url, 'service_url')}
+                className="text-terminal-muted hover:text-terminal-primary text-xs"
+              >
+                {copied === 'service_url' ? '[OK]' : '[COPY]'}
+              </button>
+            </div>
+          )}
         </div>
 
         <div className="flex gap-2 flex-wrap">
@@ -564,7 +639,28 @@ export function ServiceDetail({ serviceId, onBack }) {
       <AsciiDivider variant="single" color="muted" className="my-6" />
 
       <AsciiBox title="Service Info" variant="green">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4">
+          {service.url && (
+            <div className="flex justify-between font-mono text-sm items-center">
+              <span className="text-terminal-muted">URL:</span>
+              <div className="flex items-center gap-2">
+                <a
+                  href={service.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-terminal-cyan hover:text-terminal-primary hover:underline transition-colors"
+                >
+                  {service.url}
+                </a>
+                <button
+                  onClick={() => handleCopy(service.url, 'info_url')}
+                  className="text-terminal-muted hover:text-terminal-primary text-xs"
+                >
+                  {copied === 'info_url' ? '[OK]' : '[COPY]'}
+                </button>
+              </div>
+            </div>
+          )}
           <div className="flex justify-between font-mono text-sm">
             <span className="text-terminal-muted">SUBDOMAIN:</span>
             <span className="text-terminal-secondary">{service.subdomain}</span>

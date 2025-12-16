@@ -1,15 +1,15 @@
 # Kubernetes Deployment Template for User Services
 #
 # Template Variables:
-#   {{namespace}}        - Kubernetes namespace for the deployment
-#   {{serviceName}}      - Name of the service (used for deployment, labels, selectors)
-#   {{image}}            - Full container image path with tag (e.g., registry/app:v1.0.0)
-#   {{port}}             - Container port to expose
-#   {{replicas}}         - Number of pod replicas (1-3, default: 1)
-#   {{envVars}}          - Array of environment variables [{name, value}]
-#   {{healthCheckPath}}  - Optional: HTTP path for health check probe (e.g., /health)
-#   {{storageMountPath}} - Optional: Mount path for PVC (default: /data when enabled)
-#   {{storageClaimName}} - Optional: PVC name if persistent storage is enabled
+#   namespace        - Kubernetes namespace for the deployment
+#   serviceName      - Name of the service (used for deployment, labels, selectors)
+#   image            - Full container image path with tag (e.g., registry/app:v1.0.0)
+#   port             - Container port to expose
+#   replicas         - Number of pod replicas (1-3, default: 1)
+#   envVars          - Array of environment variables [{name, value}]
+#   healthCheckPath  - Optional: HTTP path for health check probe (e.g., /health)
+#   storageMountPath - Optional: Mount path for PVC (default: /data when enabled)
+#   storageClaimName - Optional: PVC name if persistent storage is enabled
 #
 # Resource Defaults:
 #   Memory: 256Mi (request and limit)

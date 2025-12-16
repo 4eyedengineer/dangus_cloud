@@ -37,12 +37,18 @@ k8s_yaml([
 k8s_resource('postgres', labels=['database'])
 
 # ============================================================================
-# RBAC and Secrets
+# RBAC (Secrets managed separately - see setup instructions)
 # ============================================================================
 
 k8s_yaml([
     'k8s/dev/rbac.yaml',
-    'k8s/dev/secrets.yaml',
+    # NOTE: secrets.yaml intentionally NOT included here.
+    # Secrets should be created manually once with real values:
+    #   kubectl create secret generic dangus-secrets \
+    #     --from-literal=GITHUB_CLIENT_ID=xxx \
+    #     --from-literal=GITHUB_CLIENT_SECRET=xxx \
+    #     --from-literal=ENCRYPTION_KEY=$(openssl rand -base64 32) \
+    #     --from-literal=SESSION_SECRET=$(openssl rand -base64 32)
 ])
 
 # ============================================================================
@@ -51,10 +57,12 @@ k8s_yaml([
 
 docker_build(
     'dangus-backend',
-    './backend',
+    '.',
+    dockerfile='./backend/Dockerfile',
     live_update=[
         sync('./backend/src', '/app/src'),
         sync('./backend/package.json', '/app/package.json'),
+        sync('./templates', '/app/templates'),
         run('npm install', trigger=['./backend/package.json']),
     ]
 )

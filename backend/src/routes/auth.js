@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import { encrypt, generateUserHash } from '../services/encryption.js';
 
 const GITHUB_OAUTH_URL = 'https://github.com/login/oauth/authorize';
@@ -5,6 +6,27 @@ const GITHUB_TOKEN_URL = 'https://github.com/login/oauth/access_token';
 const GITHUB_USER_URL = 'https://api.github.com/user';
 const OAUTH_SCOPES = ['read:user', 'repo'];
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
+// Cookie domain for cross-subdomain sharing (e.g., '.example.com' shares between api.example.com and app.example.com)
+// Should include leading dot. If not set, cookies only work on exact domain (fine for localhost dev).
+const COOKIE_DOMAIN = process.env.COOKIE_DOMAIN || undefined;
+
+/**
+ * Build cookie options with consistent domain handling
+ */
+function getCookieOptions(overrides = {}) {
+  const options = {
+    path: '/',
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    ...overrides,
+  };
+  // Only set domain if configured (undefined = browser default = exact domain)
+  if (COOKIE_DOMAIN) {
+    options.domain = COOKIE_DOMAIN;
+  }
+  return options;
+}
 
 /**
  * Generate a unique hash with collision check
@@ -82,13 +104,7 @@ export default async function authRoutes(fastify, options) {
     const state = crypto.randomUUID();
 
     // Store state in cookie for CSRF protection
-    reply.setCookie('oauth_state', state, {
-      path: '/',
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      maxAge: 600, // 10 minutes
-    });
+    reply.setCookie('oauth_state', state, getCookieOptions({ maxAge: 600 }));
 
     const params = new URLSearchParams({
       client_id: clientId,
@@ -121,7 +137,7 @@ export default async function authRoutes(fastify, options) {
     }
 
     // Clear the state cookie
-    reply.clearCookie('oauth_state', { path: '/' });
+    reply.clearCookie('oauth_state', getCookieOptions());
 
     if (!code) {
       return reply.redirect(`${FRONTEND_URL}?error=missing_code`);
@@ -172,14 +188,10 @@ export default async function authRoutes(fastify, options) {
       }
 
       // Set session cookie
-      reply.setCookie('session', userId, {
-        path: '/',
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
+      reply.setCookie('session', userId, getCookieOptions({
         signed: true,
-        sameSite: 'lax',
         maxAge: 60 * 60 * 24 * 7, // 7 days
-      });
+      }));
 
       // Redirect to frontend home page
       return reply.redirect(FRONTEND_URL);
@@ -206,7 +218,7 @@ export default async function authRoutes(fastify, options) {
     // Verify signed cookie
     const unsignedCookie = request.unsignCookie(sessionCookie);
     if (!unsignedCookie.valid || !unsignedCookie.value) {
-      reply.clearCookie('session', { path: '/' });
+      reply.clearCookie('session', getCookieOptions());
       return reply.code(401).send({
         error: 'Unauthorized',
         message: 'Invalid session',
@@ -222,7 +234,7 @@ export default async function authRoutes(fastify, options) {
       );
 
       if (result.rows.length === 0) {
-        reply.clearCookie('session', { path: '/' });
+        reply.clearCookie('session', getCookieOptions());
         return reply.code(401).send({
           error: 'Unauthorized',
           message: 'User not found',
@@ -250,7 +262,7 @@ export default async function authRoutes(fastify, options) {
    * Clear session and log out user
    */
   fastify.post('/auth/logout', async (request, reply) => {
-    reply.clearCookie('session', { path: '/' });
+    reply.clearCookie('session', getCookieOptions());
     return { success: true, message: 'Logged out successfully' };
   });
 }

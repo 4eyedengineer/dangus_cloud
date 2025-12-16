@@ -43,49 +43,63 @@ async function k8sRequest(method, path, body = null) {
     throw new Error('Kubernetes authentication not configured');
   }
 
-  const url = `${K8S_API_SERVER}${path}`;
   const ca = getCA();
+  const urlObj = new URL(`${K8S_API_SERVER}${path}`);
 
-  const options = {
-    method,
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json',
-      'Accept': 'application/json',
-    },
-  };
+  return new Promise((resolve, reject) => {
+    const options = {
+      hostname: urlObj.hostname,
+      port: urlObj.port || 443,
+      path: urlObj.pathname + urlObj.search,
+      method,
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
+      // TLS options
+      ca: ca || undefined,
+      rejectUnauthorized: !!ca, // Only verify if we have CA cert
+    };
 
-  if (ca) {
-    options.agent = new https.Agent({ ca });
-  } else {
-    options.agent = new https.Agent({ rejectUnauthorized: false });
-  }
-
-  const response = await fetch(url, {
-    ...options,
-    body: body ? JSON.stringify(body) : undefined,
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    let errorMessage;
-    try {
-      const errorJson = JSON.parse(errorText);
-      errorMessage = errorJson.message || errorText;
-    } catch (parseErr) {
-      // API returned non-JSON error response
-      logger.debug('Kubernetes API returned non-JSON error', {
-        status: response.status,
-        contentType: response.headers.get('content-type')
+    const req = https.request(options, (res) => {
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => {
+        if (res.statusCode >= 200 && res.statusCode < 300) {
+          try {
+            resolve(JSON.parse(data));
+          } catch (e) {
+            resolve(data);
+          }
+        } else {
+          let errorMessage;
+          try {
+            const errorJson = JSON.parse(data);
+            errorMessage = errorJson.message || data;
+          } catch (parseErr) {
+            logger.debug('Kubernetes API returned non-JSON error', {
+              status: res.statusCode,
+              contentType: res.headers['content-type']
+            });
+            errorMessage = data;
+          }
+          const error = new Error(`Kubernetes API error: ${errorMessage}`);
+          error.status = res.statusCode;
+          reject(error);
+        }
       });
-      errorMessage = errorText;
-    }
-    const error = new Error(`Kubernetes API error: ${errorMessage}`);
-    error.status = response.status;
-    throw error;
-  }
+    });
 
-  return response.json();
+    req.on('error', (err) => {
+      reject(new Error(`Kubernetes request failed: ${err.message}`));
+    });
+
+    if (body) {
+      req.write(JSON.stringify(body));
+    }
+    req.end();
+  });
 }
 
 export async function createNamespace(name) {
@@ -200,34 +214,46 @@ export async function getPodsByLabel(namespace, labelSelector) {
 
 export async function getPodLogs(namespace, podName, container = null) {
   const containerParam = container ? `&container=${container}` : '';
-  const url = `${K8S_API_SERVER}/api/v1/namespaces/${namespace}/pods/${podName}/log?timestamps=true${containerParam}`;
+  const path = `/api/v1/namespaces/${namespace}/pods/${podName}/log?timestamps=true${containerParam}`;
   const token = getServiceAccountToken();
   if (!token) {
     throw new Error('Kubernetes authentication not configured');
   }
 
   const ca = getCA();
-  const options = {
-    method: 'GET',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-    },
-  };
+  const urlObj = new URL(`${K8S_API_SERVER}${path}`);
 
-  if (ca) {
-    options.agent = new https.Agent({ ca });
-  } else {
-    options.agent = new https.Agent({ rejectUnauthorized: false });
-  }
+  return new Promise((resolve, reject) => {
+    const options = {
+      hostname: urlObj.hostname,
+      port: urlObj.port || 443,
+      path: urlObj.pathname + urlObj.search,
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+      },
+      ca: ca || undefined,
+      rejectUnauthorized: !!ca,
+    };
 
-  const response = await fetch(url, options);
+    const req = https.request(options, (res) => {
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => {
+        if (res.statusCode >= 200 && res.statusCode < 300) {
+          resolve(data);
+        } else {
+          const error = new Error(`Failed to get pod logs: ${data}`);
+          error.status = res.statusCode;
+          reject(error);
+        }
+      });
+    });
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    const error = new Error(`Failed to get pod logs: ${errorText}`);
-    error.status = response.status;
-    throw error;
-  }
+    req.on('error', (err) => {
+      reject(new Error(`Failed to get pod logs: ${err.message}`));
+    });
 
-  return response.text();
+    req.end();
+  });
 }

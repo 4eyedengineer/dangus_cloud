@@ -109,15 +109,17 @@ List all projects for the authenticated user.
 
 **Response**: `200 OK`
 ```json
-[
-  {
-    "id": "uuid",
-    "name": "my-project",
-    "namespace": "a1b2c3-my-project",
-    "created_at": "2024-01-01T00:00:00.000Z",
-    "service_count": 2
-  }
-]
+{
+  "projects": [
+    {
+      "id": "uuid",
+      "name": "my-project",
+      "namespace": "a1b2c3-my-project",
+      "created_at": "2024-01-01T00:00:00.000Z",
+      "service_count": 2
+    }
+  ]
+}
 ```
 
 ---
@@ -215,20 +217,26 @@ Create a new service in a project.
 {
   "name": "api",
   "repo_url": "https://github.com/owner/repo",
+  "image": null,
   "port": 3000,
   "branch": "main",
   "dockerfile_path": "Dockerfile",
+  "build_context": null,
+  "replicas": 1,
   "storage_gb": 5,
   "health_check_path": "/health"
 }
 ```
 
 **Validation**:
-- `name`: Required, 1-50 characters, lowercase alphanumeric and hyphens
-- `repo_url`: Required, valid GitHub URL
+- `name`: Required, 1-63 characters, lowercase alphanumeric and hyphens
+- `repo_url`: Required if `image` not provided, valid GitHub URL
+- `image`: Required if `repo_url` not provided, direct container image reference
 - `port`: Required, 1-65535
 - `branch`: Optional, default "main"
 - `dockerfile_path`: Optional, default "Dockerfile"
+- `build_context`: Optional, subdirectory for monorepo builds
+- `replicas`: Optional, 1-3, default 1
 - `storage_gb`: Optional, 1-10
 - `health_check_path`: Optional
 
@@ -257,6 +265,53 @@ Create a new service in a project.
 
 ---
 
+#### POST /projects/:projectId/services/batch
+
+Create multiple services at once (max 10).
+
+**Authentication**: Required
+
+**Request Body**:
+```json
+{
+  "services": [
+    {
+      "name": "api",
+      "repo_url": "https://github.com/owner/repo",
+      "port": 3000,
+      "dockerfile_path": "Dockerfile"
+    },
+    {
+      "name": "db",
+      "image": "postgres:15",
+      "port": 5432
+    }
+  ]
+}
+```
+
+**Response**: `201 Created`
+```json
+{
+  "created": [
+    { "id": "uuid", "name": "api", "subdomain": "a1b2c3-api" },
+    { "id": "uuid", "name": "db", "subdomain": "a1b2c3-db" }
+  ],
+  "errors": [],
+  "summary": {
+    "requested": 2,
+    "created": 2,
+    "failed": 0
+  }
+}
+```
+
+**Errors**:
+- `400` - Invalid input or more than 10 services
+- `404` - Project not found
+
+---
+
 #### GET /services/:id
 
 Get service details with latest deployment.
@@ -270,12 +325,18 @@ Get service details with latest deployment.
   "name": "api",
   "project_id": "uuid",
   "repo_url": "https://github.com/owner/repo",
+  "image": null,
   "branch": "main",
   "dockerfile_path": "Dockerfile",
+  "build_context": null,
   "port": 3000,
+  "replicas": 1,
   "storage_gb": 5,
   "health_check_path": "/health",
   "created_at": "2024-01-01T00:00:00.000Z",
+  "subdomain": "a1b2c3-api",
+  "url": "http://a1b2c3-api.192.168.1.124.nip.io",
+  "webhook_url": "http://api.dangus.192.168.1.124.nip.io/webhooks/github/uuid",
   "latest_deployment": {
     "id": "uuid",
     "status": "live",

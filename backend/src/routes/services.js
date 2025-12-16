@@ -2,6 +2,7 @@ import { generateWebhookSecret } from '../services/encryption.js';
 import { deleteDeployment, deleteService, deleteIngress, deletePVC } from '../services/kubernetes.js';
 import { getLatestCommit } from '../services/github.js';
 import { decrypt, encrypt } from '../services/encryption.js';
+import { runBuildPipeline } from '../services/buildPipeline.js';
 
 const NAME_REGEX = /^[a-z][a-z0-9-]*[a-z0-9]$|^[a-z]$/;
 const NAME_MIN_LENGTH = 1;
@@ -50,9 +51,14 @@ function validateEnvVarKey(key) {
 }
 
 const MASKED_VALUE = '••••••••';
+const BASE_DOMAIN = process.env.BASE_DOMAIN || '192.168.1.124.nip.io';
 
 function computeSubdomain(userHash, serviceName) {
   return `${userHash}-${serviceName}`;
+}
+
+function computeServiceUrl(subdomain) {
+  return `http://${subdomain}.${BASE_DOMAIN}`;
 }
 
 function computeWebhookUrl(serviceId) {
@@ -78,7 +84,7 @@ export default async function serviceRoutes(fastify, options) {
         build_context: { type: 'string' },
         port: { type: 'integer', minimum: 1, maximum: 65535 },
         replicas: { type: 'integer', minimum: 1, maximum: 3, default: 1 },
-        storage_gb: { type: 'integer', minimum: 1, maximum: 10 },
+        storage_gb: { type: ['integer', 'null'], minimum: 1, maximum: 10 },
         health_check_path: { type: 'string' },
       },
     },
@@ -113,7 +119,7 @@ export default async function serviceRoutes(fastify, options) {
         build_context: { type: 'string' },
         port: { type: 'integer', minimum: 1, maximum: 65535 },
         replicas: { type: 'integer', minimum: 1, maximum: 3 },
-        storage_gb: { type: 'integer', minimum: 1, maximum: 10 },
+        storage_gb: { type: ['integer', 'null'], minimum: 1, maximum: 10 },
         health_check_path: { type: 'string' },
       },
       additionalProperties: false,
@@ -289,7 +295,7 @@ export default async function serviceRoutes(fastify, options) {
                 image: { type: 'string' },
                 port: { type: 'integer', minimum: 1, maximum: 65535 },
                 replicas: { type: 'integer', minimum: 1, maximum: 3, default: 1 },
-                storage_gb: { type: 'integer', minimum: 1, maximum: 10 },
+                storage_gb: { type: ['integer', 'null'], minimum: 1, maximum: 10 },
                 health_check_path: { type: 'string' },
                 env_vars: {
                   type: 'array',
@@ -386,7 +392,7 @@ export default async function serviceRoutes(fastify, options) {
     const errors = [];
 
     // Use transaction for atomic batch creation
-    const client = await fastify.db.connect();
+    const client = await fastify.db.pool.connect();
 
     try {
       await client.query('BEGIN');
@@ -411,15 +417,10 @@ export default async function serviceRoutes(fastify, options) {
         // Generate webhook secret
         const webhookSecret = generateWebhookSecret();
 
-        // Insert service
-        // Note: Schema defaults are applied by Fastify, so svc.branch and svc.dockerfile_path
-        // should already have default values. We log if they're missing as this indicates a bug.
-        if (!svc.branch) {
-          fastify.log.warn(`Service "${serviceName}" missing branch - schema default should have applied`);
-        }
-        if (!svc.dockerfile_path) {
-          fastify.log.warn(`Service "${serviceName}" missing dockerfile_path - schema default should have applied`);
-        }
+        // Apply defaults explicitly (Fastify schema defaults are for validation/docs only)
+        const branch = svc.branch || 'main';
+        const dockerfilePath = svc.dockerfile_path || 'Dockerfile';
+        const replicas = svc.replicas ?? 1;
 
         const result = await client.query(
           `INSERT INTO services (
@@ -432,12 +433,12 @@ export default async function serviceRoutes(fastify, options) {
             projectId,
             serviceName,
             svc.repo_url || null,
-            svc.branch,  // Schema default: 'main'
-            svc.dockerfile_path,  // Schema default: 'Dockerfile'
+            branch,
+            dockerfilePath,
             svc.build_context || null,
             svc.image || null,
             svc.port,
-            svc.replicas,  // Schema default: 1
+            replicas,
             svc.storage_gb || null,
             svc.health_check_path || null,
             webhookSecret
@@ -523,6 +524,7 @@ export default async function serviceRoutes(fastify, options) {
       const latestDeployment = deploymentResult.rows[0] || null;
       const subdomain = computeSubdomain(userHash, service.name);
       const webhookUrl = computeWebhookUrl(serviceId);
+      const serviceUrl = computeServiceUrl(subdomain);
 
       return {
         id: service.id,
@@ -539,6 +541,7 @@ export default async function serviceRoutes(fastify, options) {
         health_check_path: service.health_check_path,
         created_at: service.created_at,
         subdomain,
+        url: serviceUrl,
         webhook_url: webhookUrl,
         latest_deployment: latestDeployment,
       };
@@ -612,7 +615,12 @@ export default async function serviceRoutes(fastify, options) {
 
       fastify.log.info(`Updated service: ${service.name} (${serviceId})`);
 
-      return service;
+      // Return consistent format with GET endpoint (include computed fields)
+      return {
+        ...service,
+        subdomain: computeSubdomain(userHash, service.name),
+        webhook_url: computeWebhookUrl(serviceId),
+      };
     } catch (err) {
       fastify.log.error(`Failed to update service: ${err.message}`);
       return reply.code(500).send({
@@ -688,6 +696,7 @@ export default async function serviceRoutes(fastify, options) {
    */
   fastify.post('/services/:id/deploy', { schema: serviceParamsSchema }, async (request, reply) => {
     const userId = request.user.id;
+    const userHash = request.user.hash;
     const serviceId = request.params.id;
 
     // Verify ownership
@@ -700,8 +709,13 @@ export default async function serviceRoutes(fastify, options) {
     }
 
     const { service } = ownershipCheck;
+    const namespace = computeNamespace(userHash, service.project_name);
 
     try {
+      let deployment;
+      let commitSha = null;
+      let githubToken = null;
+
       // For image-only services (no repo_url), we don't need GitHub token or commit info
       if (service.image && !service.repo_url) {
         // Create deployment record for image-only service
@@ -712,50 +726,56 @@ export default async function serviceRoutes(fastify, options) {
           [serviceId, 'image-deploy']
         );
 
-        const deployment = result.rows[0];
-
+        deployment = result.rows[0];
         fastify.log.info(`Created image deployment ${deployment.id} for service ${serviceId} using ${service.image}`);
+      } else {
+        // For repo-based services, get GitHub token and commit info
+        const userResult = await fastify.db.query(
+          'SELECT github_access_token FROM users WHERE id = $1',
+          [userId]
+        );
 
-        return reply.code(201).send({
-          ...deployment,
-          image: service.image,
-        });
+        if (!userResult.rows[0]?.github_access_token) {
+          return reply.code(400).send({
+            error: 'Bad Request',
+            message: 'GitHub token not configured',
+          });
+        }
+
+        githubToken = decrypt(userResult.rows[0].github_access_token);
+
+        // Get latest commit from the branch
+        const commit = await getLatestCommit(githubToken, service.repo_url, service.branch);
+        commitSha = commit.sha;
+
+        // Create deployment record
+        const result = await fastify.db.query(
+          `INSERT INTO deployments (service_id, commit_sha, status)
+           VALUES ($1, $2, 'pending')
+           RETURNING id, service_id, commit_sha, status, created_at`,
+          [serviceId, commitSha]
+        );
+
+        deployment = result.rows[0];
+        fastify.log.info(`Created deployment ${deployment.id} for service ${serviceId} at commit ${commitSha}`);
       }
 
-      // For repo-based services, get GitHub token and commit info
-      const userResult = await fastify.db.query(
-        'SELECT github_access_token FROM users WHERE id = $1',
-        [userId]
-      );
-
-      if (!userResult.rows[0]?.github_access_token) {
-        return reply.code(400).send({
-          error: 'Bad Request',
-          message: 'GitHub token not configured',
-        });
-      }
-
-      const githubToken = decrypt(userResult.rows[0].github_access_token);
-
-      // Get latest commit from the branch
-      const commit = await getLatestCommit(githubToken, service.repo_url, service.branch);
-
-      // Create deployment record
-      const result = await fastify.db.query(
-        `INSERT INTO deployments (service_id, commit_sha, status)
-         VALUES ($1, $2, 'pending')
-         RETURNING id, service_id, commit_sha, status, created_at`,
-        [serviceId, commit.sha]
-      );
-
-      const deployment = result.rows[0];
-
-      fastify.log.info(`Created deployment ${deployment.id} for service ${serviceId} at commit ${commit.sha}`);
+      // Trigger build pipeline asynchronously (don't await - runs in background)
+      runBuildPipeline(
+        fastify.db,
+        service,
+        deployment,
+        commitSha,
+        githubToken,
+        namespace,
+        userHash
+      ).catch(err => {
+        fastify.log.error(`Build pipeline failed for deployment ${deployment.id}: ${err.message}`);
+      });
 
       return reply.code(201).send({
         ...deployment,
-        commit_message: commit.message,
-        commit_author: commit.author,
+        message: 'Deployment triggered',
       });
     } catch (err) {
       fastify.log.error(`Failed to trigger deployment: ${err.message}`);
@@ -788,6 +808,13 @@ export default async function serviceRoutes(fastify, options) {
         'SELECT webhook_secret FROM services WHERE id = $1',
         [serviceId]
       );
+
+      if (result.rows.length === 0) {
+        return reply.code(404).send({
+          error: 'Not Found',
+          message: 'Service not found',
+        });
+      }
 
       const webhookUrl = computeWebhookUrl(serviceId);
 

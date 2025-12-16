@@ -1,4 +1,11 @@
-import { createNamespace, deleteNamespace } from '../services/kubernetes.js';
+import { createNamespace, deleteNamespace, createSecret } from '../services/kubernetes.js';
+import { deleteRepositoriesByNamespace } from '../services/harbor.js';
+
+// Harbor registry config - loaded from environment for pushing built images
+const HARBOR_REGISTRY = process.env.HARBOR_REGISTRY || 'harbor.192.168.1.124.nip.io';
+const HARBOR_ROBOT_USER = process.env.HARBOR_ROBOT_USER || 'robot$runner';
+const HARBOR_ROBOT_PASSWORD = process.env.HARBOR_ROBOT_PASSWORD;
+const REGISTRY_SECRET_NAME = process.env.REGISTRY_SECRET_NAME || 'harbor-registry-secret';
 
 const NAME_REGEX = /^[a-z][a-z0-9-]*[a-z0-9]$|^[a-z]$/;
 const NAME_MIN_LENGTH = 1;
@@ -28,6 +35,42 @@ function validateProjectName(name) {
 
 function computeNamespace(userHash, projectName) {
   return `${userHash}-${projectName}`;
+}
+
+/**
+ * Create the harbor registry secret in a namespace for Kaniko builds
+ */
+async function createRegistrySecret(namespace, logger) {
+  if (!HARBOR_ROBOT_PASSWORD) {
+    logger.warn('HARBOR_ROBOT_PASSWORD not set - skipping registry secret creation');
+    return;
+  }
+
+  const auth = Buffer.from(`${HARBOR_ROBOT_USER}:${HARBOR_ROBOT_PASSWORD}`).toString('base64');
+  const dockerConfig = JSON.stringify({
+    auths: {
+      [HARBOR_REGISTRY]: {
+        username: HARBOR_ROBOT_USER,
+        password: HARBOR_ROBOT_PASSWORD,
+        auth: auth,
+      },
+    },
+  });
+
+  const secretData = {
+    'config.json': Buffer.from(dockerConfig).toString('base64'),
+  };
+
+  try {
+    await createSecret(namespace, REGISTRY_SECRET_NAME, secretData);
+    logger.info(`Created registry secret in namespace ${namespace}`);
+  } catch (err) {
+    // Ignore if already exists (409 Conflict)
+    if (err.status !== 409) {
+      throw err;
+    }
+    logger.debug(`Registry secret already exists in namespace ${namespace}`);
+  }
 }
 
 export default async function projectRoutes(fastify, options) {
@@ -125,6 +168,9 @@ export default async function projectRoutes(fastify, options) {
       try {
         await createNamespace(namespace);
         fastify.log.info(`Created Kubernetes namespace: ${namespace}`);
+
+        // Create registry secret for Kaniko builds
+        await createRegistrySecret(namespace, fastify.log);
       } catch (k8sErr) {
         fastify.log.error(`Failed to create Kubernetes namespace: ${k8sErr.message}`);
         return reply.code(500).send({
@@ -277,6 +323,17 @@ export default async function projectRoutes(fastify, options) {
       }
 
       const namespace = computeNamespace(request.user.hash, project.name);
+
+      // Delete Harbor repositories (cleanup container images)
+      try {
+        const harborResult = await deleteRepositoriesByNamespace(namespace);
+        if (harborResult.deleted > 0) {
+          fastify.log.info(`Deleted ${harborResult.deleted} Harbor repositories for namespace: ${namespace}`);
+        }
+      } catch (harborErr) {
+        // Log but continue - Harbor cleanup is best-effort
+        fastify.log.warn(`Failed to cleanup Harbor repositories: ${harborErr.message}`);
+      }
 
       // Delete Kubernetes namespace (cascades all resources)
       try {

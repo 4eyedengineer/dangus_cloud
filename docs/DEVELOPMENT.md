@@ -35,7 +35,15 @@ kubectl create secret generic dangus-secrets \
   --from-literal=GITHUB_CLIENT_ID=your_client_id \
   --from-literal=GITHUB_CLIENT_SECRET=your_client_secret \
   --from-literal=ENCRYPTION_KEY=$(openssl rand -base64 32) \
-  --from-literal=SESSION_SECRET=$(openssl rand -base64 32)
+  --from-literal=SESSION_SECRET=$(openssl rand -base64 32) \
+  --from-literal=FRONTEND_URL=http://dangus.192.168.1.124.nip.io \
+  --from-literal=GITHUB_CALLBACK_URL=http://api.dangus.192.168.1.124.nip.io/auth/github/callback \
+  --from-literal=COOKIE_DOMAIN=192.168.1.124.nip.io \
+  --from-literal=BASE_DOMAIN=192.168.1.124.nip.io \
+  --from-literal=WEBHOOK_BASE_URL=http://api.dangus.192.168.1.124.nip.io/webhooks/github \
+  --from-literal=HARBOR_REGISTRY=harbor.192.168.1.124.nip.io \
+  --from-literal=HARBOR_ROBOT_USER=robot\$runner \
+  --from-literal=HARBOR_ROBOT_PASSWORD=your_harbor_robot_password
 ```
 
 To update an existing secret:
@@ -88,12 +96,14 @@ Located in `backend/migrations/`:
 | `003_create_services.sql` | Services table with deployment config |
 | `004_create_env_vars.sql` | Encrypted environment variables |
 | `005_create_deployments.sql` | Deployment history |
+| `006_add_replicas_to_services.sql` | Replicas support for scaling |
+| `007_add_image_support.sql` | Direct image deployments (no Dockerfile) |
 
 ### Running Migrations Manually
 
 ```bash
 # Connect to the backend pod
-kubectl exec -it $(kubectl get pod -l app=dangus-backend -o jsonpath='{.items[0].metadata.name}') -- sh
+kubectl exec -it $(kubectl get pod -l app=backend -o jsonpath='{.items[0].metadata.name}') -- sh
 
 # Run migrations
 node src/migrate.js
@@ -175,7 +185,7 @@ curl -k https://harbor.192.168.1.124.nip.io/api/v2.0/ping
 
 **Check logs**:
 ```bash
-kubectl logs -l app=dangus-backend --tail=100
+kubectl logs -l app=backend --tail=100
 ```
 
 **Common causes**:
@@ -224,9 +234,9 @@ http://api.dangus.192.168.1.124.nip.io/auth/github/callback
 1. Check Tilt UI for sync status
 2. Force rebuild:
    ```bash
-   tilt trigger dangus-backend
+   tilt trigger backend
    # or
-   tilt trigger dangus-frontend
+   tilt trigger frontend
    ```
 3. Check for sync errors in Tilt logs
 
@@ -251,6 +261,7 @@ Tilt watches these paths:
 **Backend**:
 - `backend/src/**` - Application code
 - `backend/package.json` - Dependencies
+- `templates/**` - Kubernetes manifest templates
 
 **Frontend**:
 - `frontend/src/**` - Application code

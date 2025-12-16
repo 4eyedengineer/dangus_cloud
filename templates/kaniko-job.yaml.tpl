@@ -1,22 +1,22 @@
 # Kubernetes Job Template for Kaniko Docker Image Builds
 #
 # Template Variables:
-#   {{namespace}}       - Kubernetes namespace for the job
-#   {{jobName}}         - Unique job name (should include timestamp or commit SHA)
-#   {{repoUrl}}         - GitHub repository URL (e.g., github.com/owner/repo)
-#   {{branch}}          - Git branch to build from
-#   {{commitSha}}       - Specific commit SHA to build
-#   {{dockerfilePath}}  - Path to Dockerfile within the repository (e.g., ./Dockerfile)
-#   {{imageDest}}       - Full destination image path (e.g., harbor.example.com/project/image:tag)
-#   {{gitSecretName}}   - Name of Kubernetes secret containing git credentials
-#   {{registrySecretName}} - Name of Kubernetes secret containing registry credentials
+#   namespace          - Kubernetes namespace for the job
+#   jobName            - Unique job name (should include timestamp or commit SHA)
+#   repoUrl            - GitHub repository URL (e.g., github.com/owner/repo)
+#   branch             - Git branch to build from
+#   commitSha          - Specific commit SHA to build
+#   dockerfilePath     - Path to Dockerfile within the repository (e.g., ./Dockerfile)
+#   imageDest          - Full destination image path (e.g., harbor.example.com/project/image:tag)
+#   gitSecretName      - Name of Kubernetes secret containing git credentials
+#   registrySecretName - Name of Kubernetes secret containing registry credentials
 #
 # Secrets Required:
-#   Git Secret ({{gitSecretName}}):
+#   Git Secret (gitSecretName):
 #     - GIT_USERNAME: GitHub username or token name
 #     - GIT_PASSWORD: GitHub personal access token
 #
-#   Registry Secret ({{registrySecretName}}):
+#   Registry Secret (registrySecretName):
 #     - config.json: Docker registry config for Harbor authentication
 #
 # Resource Defaults:
@@ -89,6 +89,7 @@ spec:
             - "--cache-ttl=24h"
             - "--snapshot-mode=redo"
             - "--log-format=text"
+            - "--skip-tls-verify"
           volumeMounts:
             - name: workspace
               mountPath: /workspace

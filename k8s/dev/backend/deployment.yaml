@@ -29,40 +29,73 @@ spec:
               value: "postgres://dangus:dangus-dev-password@postgres:5432/dangus_cloud"
             - name: RUN_MIGRATIONS
               value: "true"
+            # All domain-related config from secrets for easy environment switching
             - name: FRONTEND_URL
-              value: "http://dangus.192.168.1.124.nip.io"
+              valueFrom:
+                secretKeyRef:
+                  name: dangus-secrets
+                  key: FRONTEND_URL
+            - name: GITHUB_CALLBACK_URL
+              valueFrom:
+                secretKeyRef:
+                  name: dangus-secrets
+                  key: GITHUB_CALLBACK_URL
+            - name: COOKIE_DOMAIN
+              valueFrom:
+                secretKeyRef:
+                  name: dangus-secrets
+                  key: COOKIE_DOMAIN
+            - name: WEBHOOK_BASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: dangus-secrets
+                  key: WEBHOOK_BASE_URL
+                  optional: true
+            - name: BASE_DOMAIN
+              valueFrom:
+                secretKeyRef:
+                  name: dangus-secrets
+                  key: BASE_DOMAIN
+                  optional: true
+            - name: HARBOR_REGISTRY
+              valueFrom:
+                secretKeyRef:
+                  name: dangus-secrets
+                  key: HARBOR_REGISTRY
+                  optional: true
+            - name: HARBOR_ROBOT_USER
+              valueFrom:
+                secretKeyRef:
+                  name: dangus-secrets
+                  key: HARBOR_ROBOT_USER
+                  optional: true
+            - name: HARBOR_ROBOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: dangus-secrets
+                  key: HARBOR_ROBOT_PASSWORD
+                  optional: true
+            # Sensitive credentials
             - name: GITHUB_CLIENT_ID
               valueFrom:
                 secretKeyRef:
                   name: dangus-secrets
                   key: GITHUB_CLIENT_ID
-                  optional: true
             - name: GITHUB_CLIENT_SECRET
               valueFrom:
                 secretKeyRef:
                   name: dangus-secrets
                   key: GITHUB_CLIENT_SECRET
-                  optional: true
-            - name: GITHUB_CALLBACK_URL
-              value: "http://api.dangus.192.168.1.124.nip.io/auth/github/callback"
             - name: ENCRYPTION_KEY
               valueFrom:
                 secretKeyRef:
                   name: dangus-secrets
                   key: ENCRYPTION_KEY
-                  optional: true
             - name: SESSION_SECRET
               valueFrom:
                 secretKeyRef:
                   name: dangus-secrets
                   key: SESSION_SECRET
-                  optional: true
-            - name: WEBHOOK_BASE_URL
-              value: "http://api.dangus.192.168.1.124.nip.io/webhooks/github"
-            - name: BASE_DOMAIN
-              value: "192.168.1.124.nip.io"
-            - name: HARBOR_REGISTRY
-              value: "harbor.192.168.1.124.nip.io"
           resources:
             requests:
               memory: "128Mi"

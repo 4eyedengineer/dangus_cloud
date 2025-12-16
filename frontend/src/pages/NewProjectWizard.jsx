@@ -183,7 +183,8 @@ export function NewProjectWizard({ onComplete, onCancel }) {
         dockerfile_path: s.build?.dockerfile || 'Dockerfile',
         build_context: s.build?.context !== '.' ? s.build?.context : null,
         health_check_path: s.healthCheckPath || null,
-        storage_gb: s.hasStorage ? 5 : null,
+        // Only include storage_gb when hasStorage is true (schema doesn't accept null)
+        ...(s.hasStorage ? { storage_gb: 5 } : {}),
         env_vars: s.envVars || []
       }))
 

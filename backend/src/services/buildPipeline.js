@@ -156,10 +156,10 @@ export async function watchBuildJob(db, namespace, jobName, deploymentId, gitSec
       if (status.succeeded >= 1) {
         const logs = await captureBuildLogs(namespace, jobName);
 
-        // Update deployment with image tag
-        const imageTag = job.spec.template.spec.containers[0].args
-          .find(arg => arg.startsWith('--destination='))
-          ?.replace('--destination=', '');
+        // Update deployment with image tag - safely extract from job spec
+        const containerArgs = job.spec?.template?.spec?.containers?.[0]?.args || [];
+        const destinationArg = containerArgs.find(arg => arg?.startsWith?.('--destination='));
+        const imageTag = destinationArg?.replace('--destination=', '') || null;
 
         await updateDeploymentStatus(db, deploymentId, 'deploying', {
           build_logs: logs,
@@ -306,7 +306,7 @@ export async function deployService(db, service, deployment, imageTag, namespace
     await updateDeploymentStatus(db, deployment.id, 'live');
   } catch (error) {
     await updateDeploymentStatus(db, deployment.id, 'failed', {
-      build_logs: deployment.build_logs + `\n\nDeploy failed: ${error.message}`,
+      build_logs: (deployment.build_logs || '') + `\n\nDeploy failed: ${error.message}`,
     });
 
     throw error;

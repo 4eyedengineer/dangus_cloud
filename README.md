@@ -95,8 +95,18 @@ kubectl create secret generic dangus-secrets \
   --from-literal=GITHUB_CLIENT_ID=your_github_client_id \
   --from-literal=GITHUB_CLIENT_SECRET=your_github_client_secret \
   --from-literal=ENCRYPTION_KEY=$(openssl rand -base64 32) \
-  --from-literal=SESSION_SECRET=$(openssl rand -base64 32)
+  --from-literal=SESSION_SECRET=$(openssl rand -base64 32) \
+  --from-literal=FRONTEND_URL=http://dangus.192.168.1.124.nip.io \
+  --from-literal=GITHUB_CALLBACK_URL=http://api.dangus.192.168.1.124.nip.io/auth/github/callback \
+  --from-literal=COOKIE_DOMAIN=192.168.1.124.nip.io \
+  --from-literal=BASE_DOMAIN=192.168.1.124.nip.io \
+  --from-literal=WEBHOOK_BASE_URL=http://api.dangus.192.168.1.124.nip.io/webhooks/github \
+  --from-literal=HARBOR_REGISTRY=harbor.192.168.1.124.nip.io \
+  --from-literal=HARBOR_ROBOT_USER=robot\$runner \
+  --from-literal=HARBOR_ROBOT_PASSWORD=your_harbor_robot_password
 ```
+
+> **Note**: The `HARBOR_ROBOT_*` credentials are for pushing built images to Harbor. Create a robot account in Harbor with push permissions to the `dangus` project.
 
 ### 3. Set Up GitHub OAuth App
 
@@ -168,8 +178,15 @@ dangus_cloud/
 │   │   └── api/                # API client functions
 │   ├── package.json
 │   └── Dockerfile
+├── templates/                  # Kubernetes manifest templates
+│   ├── deployment.yaml.tpl
+│   ├── service.yaml.tpl
+│   ├── ingress.yaml.tpl
+│   ├── pvc.yaml.tpl
+│   ├── namespace.yaml.tpl
+│   └── kaniko-job.yaml.tpl
 ├── k8s/
-│   └── dev/                    # Kubernetes manifests
+│   └── dev/                    # Development Kubernetes manifests
 ├── docs/
 │   ├── DEVELOPMENT.md          # Development guide
 │   └── API.md                  # API reference
