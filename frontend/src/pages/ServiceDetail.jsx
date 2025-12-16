@@ -8,6 +8,7 @@ import TerminalSpinner from '../components/TerminalSpinner'
 import { useToast } from '../components/Toast'
 import { BuildLogViewer } from '../components/BuildLogViewer'
 import { ResourceMetrics } from '../components/ResourceMetrics'
+import { LogViewer } from '../components/LogViewer'
 import { fetchService, triggerDeploy, fetchWebhookSecret, restartService, fetchServiceMetrics, validateDockerfile } from '../api/services'
 import { fetchEnvVars, createEnvVar, updateEnvVar, deleteEnvVar, revealEnvVar } from '../api/envVars'
 import { fetchDeployments } from '../api/deployments'
@@ -27,6 +28,7 @@ export function ServiceDetail({ serviceId, onBack }) {
   const [historyCollapsed, setHistoryCollapsed] = useState(false)
   const [buildLogsCollapsed, setBuildLogsCollapsed] = useState(false)
   const [showBuildLogs, setShowBuildLogs] = useState(false)
+  const [containerLogsCollapsed, setContainerLogsCollapsed] = useState(false)
 
   const [copied, setCopied] = useState(null)
   const [revealedSecrets, setRevealedSecrets] = useState({})
@@ -678,6 +680,23 @@ export function ServiceDetail({ serviceId, onBack }) {
             serviceId={serviceId}
             fetchMetrics={fetchServiceMetrics}
             refreshInterval={5000}
+          />
+        </div>
+      )}
+
+      {/* Container Logs Section */}
+      <AsciiSectionDivider
+        title="CONTAINER LOGS"
+        collapsed={containerLogsCollapsed}
+        onToggle={() => setContainerLogsCollapsed(!containerLogsCollapsed)}
+        color="green"
+      />
+
+      {!containerLogsCollapsed && (
+        <div className="mt-4">
+          <LogViewer
+            serviceId={serviceId}
+            enabled={!containerLogsCollapsed}
           />
         </div>
       )}
