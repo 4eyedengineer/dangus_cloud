@@ -242,7 +242,7 @@ function ProjectCard({ project, onClick, onDelete, formatDate, getStatus, getSta
       onClick={onClick}
     >
       <div className="font-mono whitespace-pre text-terminal-muted select-none text-sm">
-        +-- {project.name.toUpperCase().padEnd(36, '-')}--+
+        +-- {(project.name || 'UNNAMED').toUpperCase().padEnd(36, '-')}--+
       </div>
 
       <div className="border-l border-r border-terminal-muted px-4 py-3 bg-terminal-bg-secondary">

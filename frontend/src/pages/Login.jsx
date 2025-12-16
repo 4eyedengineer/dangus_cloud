@@ -54,7 +54,7 @@ export function Login({ onLogin }) {
               <div
                 key={index}
                 className={`${
-                  msg.includes('ready')
+                  msg?.includes('ready')
                     ? 'text-terminal-primary text-glow-green'
                     : 'text-terminal-muted'
                 }`}

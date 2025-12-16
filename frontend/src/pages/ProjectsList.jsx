@@ -73,7 +73,7 @@ export function ProjectsList({ onProjectClick }) {
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase()
       result = result.filter(p =>
-        p.name.toLowerCase().includes(query) ||
+        p.name?.toLowerCase().includes(query) ||
         p.namespace?.toLowerCase().includes(query)
       )
     }
