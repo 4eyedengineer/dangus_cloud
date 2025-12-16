@@ -12,7 +12,8 @@ import {
   Dashboard,
   ProjectDetail,
   ServiceDetail,
-  NewServiceForm
+  NewServiceForm,
+  Settings
 } from './pages'
 import { getCurrentUser, logout, getLoginUrl } from './api/auth'
 import { fetchProjects, createProject, deleteProject } from './api/projects'
@@ -72,7 +73,9 @@ function AppContent() {
       setSelectedProject(null)
       setSelectedService(null)
     } else if (item.label === 'Settings') {
-      toast.info('Settings page coming soon')
+      setCurrentView('settings')
+      setSelectedProject(null)
+      setSelectedService(null)
     }
   }
 
@@ -227,6 +230,16 @@ function AppContent() {
             projectId={selectedProject?.id}
             onSubmit={handleServiceSubmit}
             onCancel={handleBack}
+          />
+        )
+      case 'settings':
+        return (
+          <Settings
+            user={user}
+            onLogout={() => {
+              setUser(null)
+              setCurrentView('login')
+            }}
           />
         )
       default:
