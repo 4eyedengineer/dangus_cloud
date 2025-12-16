@@ -105,6 +105,7 @@ export function generateNamespaceManifest(name) {
  * @param {string} options.serviceName - Name of the service
  * @param {string} options.image - Full container image path with tag
  * @param {number} options.port - Container port to expose
+ * @param {number} [options.replicas=1] - Number of replicas (1-3)
  * @param {Array<{name: string, value: string}>} [options.envVars] - Environment variables
  * @param {string} [options.healthCheckPath] - HTTP path for health check probe
  * @param {string} [options.storageMountPath] - Mount path for PVC (default: /data)
@@ -117,6 +118,11 @@ export function generateDeploymentManifest(options) {
     if (!(field in options)) {
       throw new Error(`Missing required option: ${field}`);
     }
+  }
+
+  // Set default replicas if not provided
+  if (!options.replicas) {
+    options.replicas = 1;
   }
 
   // Set default storageMountPath if storageClaimName is provided

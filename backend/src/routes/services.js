@@ -75,6 +75,7 @@ export default async function serviceRoutes(fastify, options) {
         branch: { type: 'string', default: 'main' },
         dockerfile_path: { type: 'string', default: 'Dockerfile' },
         port: { type: 'integer', minimum: 1, maximum: 65535 },
+        replicas: { type: 'integer', minimum: 1, maximum: 3, default: 1 },
         storage_gb: { type: 'integer', minimum: 1, maximum: 10 },
         health_check_path: { type: 'string' },
       },
@@ -108,6 +109,7 @@ export default async function serviceRoutes(fastify, options) {
         branch: { type: 'string' },
         dockerfile_path: { type: 'string' },
         port: { type: 'integer', minimum: 1, maximum: 65535 },
+        replicas: { type: 'integer', minimum: 1, maximum: 3 },
         storage_gb: { type: 'integer', minimum: 1, maximum: 10 },
         health_check_path: { type: 'string' },
       },
@@ -197,6 +199,7 @@ export default async function serviceRoutes(fastify, options) {
       branch = 'main',
       dockerfile_path = 'Dockerfile',
       port,
+      replicas = 1,
       storage_gb,
       health_check_path,
     } = request.body;
@@ -220,10 +223,10 @@ export default async function serviceRoutes(fastify, options) {
 
       // Insert into database
       const result = await fastify.db.query(
-        `INSERT INTO services (project_id, name, repo_url, branch, dockerfile_path, port, storage_gb, health_check_path, webhook_secret)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-         RETURNING id, name, repo_url, branch, dockerfile_path, port, storage_gb, health_check_path, created_at`,
-        [projectId, serviceName, repo_url, branch, dockerfile_path, port, storage_gb || null, health_check_path || null, webhookSecret]
+        `INSERT INTO services (project_id, name, repo_url, branch, dockerfile_path, port, replicas, storage_gb, health_check_path, webhook_secret)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+         RETURNING id, name, repo_url, branch, dockerfile_path, port, replicas, storage_gb, health_check_path, created_at`,
+        [projectId, serviceName, repo_url, branch, dockerfile_path, port, replicas, storage_gb || null, health_check_path || null, webhookSecret]
       );
 
       const service = result.rows[0];
@@ -289,6 +292,7 @@ export default async function serviceRoutes(fastify, options) {
         branch: service.branch,
         dockerfile_path: service.dockerfile_path,
         port: service.port,
+        replicas: service.replicas,
         storage_gb: service.storage_gb,
         health_check_path: service.health_check_path,
         created_at: service.created_at,
@@ -324,7 +328,7 @@ export default async function serviceRoutes(fastify, options) {
       });
     }
 
-    const allowedFields = ['branch', 'dockerfile_path', 'port', 'storage_gb', 'health_check_path'];
+    const allowedFields = ['branch', 'dockerfile_path', 'port', 'replicas', 'storage_gb', 'health_check_path'];
     const updates = {};
 
     for (const field of allowedFields) {
@@ -358,7 +362,7 @@ export default async function serviceRoutes(fastify, options) {
         `UPDATE services
          SET ${setClauses.join(', ')}
          WHERE id = $${paramIndex}
-         RETURNING id, name, repo_url, branch, dockerfile_path, port, storage_gb, health_check_path, created_at`,
+         RETURNING id, name, repo_url, branch, dockerfile_path, port, replicas, storage_gb, health_check_path, created_at`,
         values
       );
 
