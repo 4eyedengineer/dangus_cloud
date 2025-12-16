@@ -10,6 +10,7 @@ import {
 import {
   Login,
   Dashboard,
+  ProjectsList,
   ProjectDetail,
   ServiceDetail,
   NewServiceForm,
@@ -68,8 +69,12 @@ function AppContent() {
     }
 
     setActiveNav(item.label)
-    if (item.label === 'Dashboard' || item.label === 'Projects') {
+    if (item.label === 'Dashboard') {
       setCurrentView('dashboard')
+      setSelectedProject(null)
+      setSelectedService(null)
+    } else if (item.label === 'Projects') {
+      setCurrentView('projects')
       setSelectedProject(null)
       setSelectedService(null)
     } else if (item.label === 'Settings') {
@@ -126,7 +131,8 @@ function AppContent() {
       setCurrentView('projectDetail')
       setSelectedService(null)
     } else if (currentView === 'projectDetail' || currentView === 'newService') {
-      setCurrentView('dashboard')
+      // Go back to projects list if we came from there, otherwise dashboard
+      setCurrentView(activeNav === 'Projects' ? 'projects' : 'dashboard')
       setSelectedProject(null)
     }
   }
@@ -150,11 +156,18 @@ function AppContent() {
         { label: 'History' }
       ]
     }
+    if (currentView === 'projects') {
+      return [
+        { label: 'All Projects', active: true },
+        { label: 'Active' },
+        { label: 'Archived' },
+        { label: 'Favorites' }
+      ]
+    }
     return [
-      { label: 'All Projects', active: true },
-      { label: 'Active' },
-      { label: 'Archived' },
-      { label: 'Favorites' }
+      { label: 'Dashboard', active: true },
+      { label: 'Recent Activity' },
+      { label: 'Quick Stats' }
     ]
   }
 
@@ -205,6 +218,12 @@ function AppContent() {
       case 'dashboard':
         return (
           <Dashboard
+            onProjectClick={handleProjectClick}
+          />
+        )
+      case 'projects':
+        return (
+          <ProjectsList
             onProjectClick={handleProjectClick}
           />
         )
