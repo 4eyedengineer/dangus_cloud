@@ -1,5 +1,5 @@
 import { generateWebhookSecret } from '../services/encryption.js';
-import { deleteDeployment, deleteService, deleteIngress, deletePVC, rolloutRestart, deleteServicePods } from '../services/kubernetes.js';
+import { deleteDeployment, deleteService, deleteIngress, deletePVC, rolloutRestart, deleteServicePods, getPodMetrics, getDeployment } from '../services/kubernetes.js';
 import { getLatestCommit } from '../services/github.js';
 import { decrypt, encrypt } from '../services/encryption.js';
 import { runBuildPipeline } from '../services/buildPipeline.js';
@@ -68,6 +68,42 @@ function computeWebhookUrl(serviceId) {
 
 function computeNamespace(userHash, projectName) {
   return `${userHash}-${projectName}`;
+}
+
+function parseResourceQuantity(value) {
+  if (!value || value === '0') return 0;
+
+  // CPU: parse millicores (e.g., "45m", "100m", "1", "0.5")
+  if (value.endsWith('m')) {
+    return parseInt(value.slice(0, -1), 10);
+  }
+  // CPU without suffix means cores, convert to millicores
+  if (/^[\d.]+$/.test(value)) {
+    return Math.round(parseFloat(value) * 1000);
+  }
+
+  // Memory: parse bytes from various units
+  if (value.endsWith('Ki')) {
+    return parseInt(value.slice(0, -2), 10) * 1024;
+  }
+  if (value.endsWith('Mi')) {
+    return parseInt(value.slice(0, -2), 10) * 1024 * 1024;
+  }
+  if (value.endsWith('Gi')) {
+    return parseInt(value.slice(0, -2), 10) * 1024 * 1024 * 1024;
+  }
+  if (value.endsWith('K') || value.endsWith('k')) {
+    return parseInt(value.slice(0, -1), 10) * 1000;
+  }
+  if (value.endsWith('M')) {
+    return parseInt(value.slice(0, -1), 10) * 1000 * 1000;
+  }
+  if (value.endsWith('G')) {
+    return parseInt(value.slice(0, -1), 10) * 1000 * 1000 * 1000;
+  }
+
+  // Plain number assumed to be bytes
+  return parseInt(value, 10) || 0;
 }
 
 export default async function serviceRoutes(fastify, options) {
@@ -550,6 +586,108 @@ export default async function serviceRoutes(fastify, options) {
       return reply.code(500).send({
         error: 'Internal Server Error',
         message: 'Failed to get service',
+      });
+    }
+  });
+
+  /**
+   * GET /services/:id/metrics
+   * Get real-time CPU and memory metrics for a service
+   */
+  fastify.get('/services/:id/metrics', { schema: serviceParamsSchema }, async (request, reply) => {
+    const userId = request.user.id;
+    const userHash = request.user.hash;
+    const serviceId = request.params.id;
+
+    // Verify ownership
+    const ownershipCheck = await verifyServiceOwnership(serviceId, userId);
+    if (ownershipCheck.error) {
+      return reply.code(ownershipCheck.status).send({
+        error: ownershipCheck.status === 404 ? 'Not Found' : 'Forbidden',
+        message: ownershipCheck.error,
+      });
+    }
+
+    const { service } = ownershipCheck;
+    const namespace = computeNamespace(userHash, service.project_name);
+
+    try {
+      // Get pod metrics from metrics-server
+      let podMetrics;
+      try {
+        podMetrics = await getPodMetrics(namespace, `app=${service.name}`);
+      } catch (metricsErr) {
+        // Metrics server unavailable or no metrics yet
+        fastify.log.warn(`Metrics unavailable for ${service.name}: ${metricsErr.message}`);
+        return {
+          pods: [],
+          aggregated: {
+            totalCpuMillicores: 0,
+            totalMemoryBytes: 0,
+            podCount: 0
+          },
+          limits: null,
+          available: false,
+          message: 'Metrics not available. Service may not be running or metrics-server may be unavailable.'
+        };
+      }
+
+      // Get resource limits from deployment
+      let limits = null;
+      try {
+        const deployment = await getDeployment(namespace, service.name);
+        const containerLimits = deployment.spec?.template?.spec?.containers?.[0]?.resources?.limits;
+        if (containerLimits) {
+          limits = {
+            cpuMillicores: parseResourceQuantity(containerLimits.cpu),
+            memoryBytes: parseResourceQuantity(containerLimits.memory)
+          };
+        }
+      } catch (deployErr) {
+        fastify.log.warn(`Could not get deployment limits for ${service.name}: ${deployErr.message}`);
+      }
+
+      // Parse and aggregate metrics
+      const parsedPods = podMetrics.map(pod => {
+        const container = pod.containers[0] || {};
+        const cpuMillicores = parseResourceQuantity(container.cpu || '0');
+        const memoryBytes = parseResourceQuantity(container.memory || '0');
+
+        return {
+          name: pod.name,
+          cpu: {
+            usage: container.cpu || '0',
+            usageMillicores: cpuMillicores,
+            limitMillicores: limits?.cpuMillicores || null,
+            percentUsed: limits?.cpuMillicores ? Math.round((cpuMillicores / limits.cpuMillicores) * 100) : null
+          },
+          memory: {
+            usage: container.memory || '0',
+            usageBytes: memoryBytes,
+            limitBytes: limits?.memoryBytes || null,
+            percentUsed: limits?.memoryBytes ? Math.round((memoryBytes / limits.memoryBytes) * 100) : null
+          }
+        };
+      });
+
+      // Aggregate metrics across all pods
+      const aggregated = {
+        totalCpuMillicores: parsedPods.reduce((sum, pod) => sum + pod.cpu.usageMillicores, 0),
+        totalMemoryBytes: parsedPods.reduce((sum, pod) => sum + pod.memory.usageBytes, 0),
+        podCount: parsedPods.length
+      };
+
+      return {
+        pods: parsedPods,
+        aggregated,
+        limits,
+        available: true
+      };
+    } catch (err) {
+      fastify.log.error(`Failed to get metrics: ${err.message}`);
+      return reply.code(500).send({
+        error: 'Internal Server Error',
+        message: 'Failed to get service metrics',
       });
     }
   });
