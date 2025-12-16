@@ -41,6 +41,10 @@ export async function fetchWebhookSecret(id) {
   return apiFetch(`/services/${id}/webhook-secret`);
 }
 
+export async function fetchServiceMetrics(id) {
+  return apiFetch(`/services/${id}/metrics`);
+}
+
 /**
  * Create multiple services at once
  * @param {string} projectId - Project ID

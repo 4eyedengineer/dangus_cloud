@@ -7,7 +7,8 @@ import TerminalInput from '../components/TerminalInput'
 import TerminalSpinner from '../components/TerminalSpinner'
 import { useToast } from '../components/Toast'
 import { BuildLogViewer } from '../components/BuildLogViewer'
-import { fetchService, triggerDeploy, fetchWebhookSecret, restartService } from '../api/services'
+import { ResourceMetrics } from '../components/ResourceMetrics'
+import { fetchService, triggerDeploy, fetchWebhookSecret, restartService, fetchServiceMetrics } from '../api/services'
 import { fetchEnvVars, createEnvVar, updateEnvVar, deleteEnvVar, revealEnvVar } from '../api/envVars'
 import { fetchDeployments } from '../api/deployments'
 import { ApiError } from '../api/utils'
@@ -20,6 +21,7 @@ export function ServiceDetail({ serviceId, onBack }) {
   const [error, setError] = useState(null)
 
   const [configCollapsed, setConfigCollapsed] = useState(false)
+  const [resourcesCollapsed, setResourcesCollapsed] = useState(false)
   const [envCollapsed, setEnvCollapsed] = useState(false)
   const [webhooksCollapsed, setWebhooksCollapsed] = useState(false)
   const [historyCollapsed, setHistoryCollapsed] = useState(false)
@@ -516,6 +518,24 @@ export function ServiceDetail({ serviceId, onBack }) {
             <span className="font-mono text-sm text-terminal-secondary break-all">{service.repo_url}</span>
           </div>
         </AsciiBox>
+      )}
+
+      {/* Resource Usage Section */}
+      <AsciiSectionDivider
+        title="RESOURCE USAGE"
+        collapsed={resourcesCollapsed}
+        onToggle={() => setResourcesCollapsed(!resourcesCollapsed)}
+        color="cyan"
+      />
+
+      {!resourcesCollapsed && (
+        <div className="mt-4">
+          <ResourceMetrics
+            serviceId={serviceId}
+            fetchMetrics={fetchServiceMetrics}
+            refreshInterval={5000}
+          />
+        </div>
       )}
 
       {/* Environment Variables Section */}

@@ -212,6 +212,30 @@ export async function getPodsByLabel(namespace, labelSelector) {
   return k8sRequest('GET', `/api/v1/namespaces/${namespace}/pods?labelSelector=${encodeURIComponent(labelSelector)}`);
 }
 
+export async function getDeployment(namespace, name) {
+  return k8sRequest('GET', `/apis/apps/v1/namespaces/${namespace}/deployments/${name}`);
+}
+
+export async function getPodMetrics(namespace, labelSelector) {
+  const metricsPath = `/apis/metrics.k8s.io/v1beta1/namespaces/${namespace}/pods`;
+  const metrics = await k8sRequest('GET', metricsPath);
+
+  // Filter by label selector (format: "app=servicename")
+  const [labelKey, labelValue] = labelSelector.split('=');
+  const pods = metrics.items.filter(pod =>
+    pod.metadata.labels?.[labelKey] === labelValue
+  );
+
+  return pods.map(pod => ({
+    name: pod.metadata.name,
+    containers: pod.containers.map(container => ({
+      name: container.name,
+      cpu: container.usage.cpu,
+      memory: container.usage.memory
+    }))
+  }));
+}
+
 export async function getPodLogs(namespace, podName, container = null) {
   const containerParam = container ? `&container=${container}` : '';
   const path = `/api/v1/namespaces/${namespace}/pods/${podName}/log?timestamps=true${containerParam}`;
