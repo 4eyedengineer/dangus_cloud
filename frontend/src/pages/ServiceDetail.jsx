@@ -10,7 +10,8 @@ import { BuildLogViewer } from '../components/BuildLogViewer'
 import { ResourceMetrics } from '../components/ResourceMetrics'
 import { DomainManager } from '../components/DomainManager'
 import { LogViewer } from '../components/LogViewer'
-import { fetchService, triggerDeploy, fetchWebhookSecret, restartService, fetchServiceMetrics, validateDockerfile } from '../api/services'
+import { HealthStatus } from '../components/HealthStatus'
+import { fetchService, triggerDeploy, fetchWebhookSecret, restartService, fetchServiceMetrics, validateDockerfile, fetchServiceHealth } from '../api/services'
 import { fetchEnvVars, createEnvVar, updateEnvVar, deleteEnvVar, revealEnvVar } from '../api/envVars'
 import { fetchDeployments } from '../api/deployments'
 import { ApiError } from '../api/utils'
@@ -24,6 +25,7 @@ export function ServiceDetail({ serviceId, onBack }) {
 
   const [configCollapsed, setConfigCollapsed] = useState(false)
   const [resourcesCollapsed, setResourcesCollapsed] = useState(false)
+  const [healthCollapsed, setHealthCollapsed] = useState(false)
   const [envCollapsed, setEnvCollapsed] = useState(false)
   const [webhooksCollapsed, setWebhooksCollapsed] = useState(false)
   const [domainsCollapsed, setDomainsCollapsed] = useState(false)
@@ -686,12 +688,34 @@ export function ServiceDetail({ serviceId, onBack }) {
         </div>
       )}
 
+      {/* Health Status Section */}
+      {service.health_check_path && (
+        <>
+          <AsciiSectionDivider
+            title="HEALTH STATUS"
+            collapsed={healthCollapsed}
+            onToggle={() => setHealthCollapsed(!healthCollapsed)}
+            color="green"
+          />
+
+          {!healthCollapsed && (
+            <div className="mt-4">
+              <HealthStatus
+                serviceId={serviceId}
+                fetchHealth={fetchServiceHealth}
+                refreshInterval={30000}
+              />
+            </div>
+          )}
+        </>
+      )}
+
       {/* Container Logs Section */}
       <AsciiSectionDivider
         title="CONTAINER LOGS"
         collapsed={containerLogsCollapsed}
         onToggle={() => setContainerLogsCollapsed(!containerLogsCollapsed)}
-        color="green"
+        color="cyan"
       />
 
       {!containerLogsCollapsed && (
