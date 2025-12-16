@@ -6,6 +6,7 @@ import TerminalButton from '../components/TerminalButton'
 import TerminalInput from '../components/TerminalInput'
 import TerminalSpinner from '../components/TerminalSpinner'
 import { useToast } from '../components/Toast'
+import { BuildLogViewer } from '../components/BuildLogViewer'
 import { fetchService, triggerDeploy, fetchWebhookSecret } from '../api/services'
 import { fetchEnvVars, createEnvVar, updateEnvVar, deleteEnvVar, revealEnvVar } from '../api/envVars'
 import { fetchDeployments } from '../api/deployments'
@@ -22,6 +23,8 @@ export function ServiceDetail({ serviceId, onBack }) {
   const [envCollapsed, setEnvCollapsed] = useState(false)
   const [webhooksCollapsed, setWebhooksCollapsed] = useState(false)
   const [historyCollapsed, setHistoryCollapsed] = useState(false)
+  const [buildLogsCollapsed, setBuildLogsCollapsed] = useState(false)
+  const [showBuildLogs, setShowBuildLogs] = useState(false)
 
   const [copied, setCopied] = useState(null)
   const [revealedSecrets, setRevealedSecrets] = useState({})
@@ -47,6 +50,17 @@ export function ServiceDetail({ serviceId, onBack }) {
     const latestStatus = deployments[0]?.status
     return ['pending', 'building', 'deploying'].includes(latestStatus)
   }
+
+  // Get the latest deployment ID for log streaming
+  const latestDeploymentId = deployments[0]?.id
+
+  // Auto-show build logs when a deployment is active
+  useEffect(() => {
+    if (hasActiveDeployment()) {
+      setShowBuildLogs(true)
+      setBuildLogsCollapsed(false)
+    }
+  }, [deployments])
 
   // Initial load
   useEffect(() => {
@@ -228,6 +242,9 @@ export function ServiceDetail({ serviceId, onBack }) {
       const deployment = await triggerDeploy(serviceId)
       setDeployments(prev => [deployment, ...prev])
       toast.success('Deployment triggered successfully')
+      // Show build logs for new deployment
+      setShowBuildLogs(true)
+      setBuildLogsCollapsed(false)
       // Refresh service data to get new deployment status
       const updatedService = await fetchService(serviceId)
       setService(updatedService)
@@ -385,6 +402,31 @@ export function ServiceDetail({ serviceId, onBack }) {
       </div>
 
       <AsciiDivider variant="double" color="green" />
+
+      {/* Build Logs Section - shown when deployment is active or user has toggled it */}
+      {(showBuildLogs || hasActiveDeployment()) && latestDeploymentId && (
+        <>
+          <AsciiSectionDivider
+            title="BUILD LOGS"
+            collapsed={buildLogsCollapsed}
+            onToggle={() => setBuildLogsCollapsed(!buildLogsCollapsed)}
+            color="cyan"
+          />
+
+          {!buildLogsCollapsed && (
+            <div className="mt-4">
+              <BuildLogViewer
+                deploymentId={latestDeploymentId}
+                enabled={!buildLogsCollapsed}
+                onComplete={(status) => {
+                  // Refresh deployments when build completes
+                  loadServiceData()
+                }}
+              />
+            </div>
+          )}
+        </>
+      )}
 
       {/* Configuration Section */}
       <AsciiSectionDivider

@@ -257,3 +257,91 @@ export async function getPodLogs(namespace, podName, container = null) {
     req.end();
   });
 }
+
+/**
+ * Stream pod logs in real-time using follow mode
+ * Returns an EventEmitter-like object that emits 'data', 'error', and 'end' events
+ */
+export function streamPodLogs(namespace, podName, container = null) {
+  const containerParam = container ? `&container=${container}` : '';
+  const path = `/api/v1/namespaces/${namespace}/pods/${podName}/log?follow=true&timestamps=true${containerParam}`;
+  const token = getServiceAccountToken();
+
+  if (!token) {
+    const error = new Error('Kubernetes authentication not configured');
+    return {
+      on: (event, callback) => {
+        if (event === 'error') callback(error);
+      },
+      destroy: () => {}
+    };
+  }
+
+  const ca = getCA();
+  const urlObj = new URL(`${K8S_API_SERVER}${path}`);
+
+  const options = {
+    hostname: urlObj.hostname,
+    port: urlObj.port || 443,
+    path: urlObj.pathname + urlObj.search,
+    method: 'GET',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+    },
+    ca: ca || undefined,
+    rejectUnauthorized: !!ca,
+  };
+
+  const req = https.request(options);
+
+  const stream = {
+    _handlers: { data: [], error: [], end: [] },
+    _request: req,
+    on(event, callback) {
+      if (this._handlers[event]) {
+        this._handlers[event].push(callback);
+      }
+      return this;
+    },
+    emit(event, ...args) {
+      if (this._handlers[event]) {
+        this._handlers[event].forEach(cb => cb(...args));
+      }
+    },
+    destroy() {
+      try {
+        req.destroy();
+      } catch (e) {
+        // Ignore errors on destroy
+      }
+    }
+  };
+
+  req.on('response', (res) => {
+    if (res.statusCode >= 200 && res.statusCode < 300) {
+      res.on('data', (chunk) => {
+        stream.emit('data', chunk.toString());
+      });
+      res.on('end', () => {
+        stream.emit('end');
+      });
+      res.on('error', (err) => {
+        stream.emit('error', err);
+      });
+    } else {
+      let errorData = '';
+      res.on('data', chunk => errorData += chunk);
+      res.on('end', () => {
+        stream.emit('error', new Error(`Failed to stream logs: ${res.statusCode} - ${errorData}`));
+      });
+    }
+  });
+
+  req.on('error', (err) => {
+    stream.emit('error', new Error(`Failed to stream pod logs: ${err.message}`));
+  });
+
+  req.end();
+
+  return stream;
+}

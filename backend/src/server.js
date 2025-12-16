@@ -1,6 +1,7 @@
 import Fastify from 'fastify';
 import cookie from '@fastify/cookie';
 import cors from '@fastify/cors';
+import websocket from '@fastify/websocket';
 import databasePlugin from './plugins/database.js';
 import authPlugin from './plugins/auth.js';
 import authRoutes from './routes/auth.js';
@@ -67,6 +68,9 @@ fastify.register(cors, {
   origin: FRONTEND_URL,
   credentials: true,
 });
+
+// Register WebSocket plugin for real-time log streaming
+fastify.register(websocket);
 
 // Register database plugin (includes migration runner)
 fastify.register(databasePlugin);
