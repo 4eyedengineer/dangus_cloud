@@ -1,5 +1,4 @@
 import { useState, useEffect, useCallback } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { AsciiBox } from '../components/AsciiBox'
 import { AsciiDivider, AsciiSectionDivider } from '../components/AsciiDivider'
 import { StatusIndicator } from '../components/StatusIndicator'
@@ -21,7 +20,6 @@ import { useDeploymentStatus } from '../hooks/useDeploymentStatus'
 import { useWebSocket } from '../hooks/useWebSocket'
 
 export function ServiceDetail({ serviceId, onBack }) {
-  const navigate = useNavigate()
   const [service, setService] = useState(null)
   const [envVars, setEnvVars] = useState([])
   const [deployments, setDeployments] = useState([])
@@ -1302,8 +1300,7 @@ export function ServiceDetail({ serviceId, onBack }) {
           onClose={() => setShowCloneModal(false)}
           onCloned={(newService) => {
             setShowCloneModal(false)
-            toast.success(`Service cloned successfully as "${newService.name}"`)
-            navigate(`/services/${newService.id}`)
+            toast.success(`Service "${newService.name}" cloned successfully. Navigate to the project to view it.`)
           }}
         />
       )}
