@@ -17,6 +17,7 @@ import {
   NewProjectWizard,
   Settings
 } from './pages'
+import { WebSocketProvider } from './context/WebSocketContext'
 import { getCurrentUser, logout, getLoginUrl } from './api/auth'
 import { fetchProjects, createProject, deleteProject } from './api/projects'
 import { fetchProject } from './api/projects'
@@ -307,7 +308,9 @@ function App() {
   return (
     <ErrorBoundary>
       <ToastProvider>
-        <AppContent />
+        <WebSocketProvider>
+          <AppContent />
+        </WebSocketProvider>
       </ToastProvider>
     </ErrorBoundary>
   )

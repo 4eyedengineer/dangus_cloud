@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { AsciiBox } from '../components/AsciiBox'
 import { AsciiDivider, AsciiSectionDivider } from '../components/AsciiDivider'
@@ -17,6 +17,8 @@ import { fetchService, triggerDeploy, fetchWebhookSecret, restartService, fetchS
 import { fetchEnvVars, createEnvVar, updateEnvVar, deleteEnvVar, revealEnvVar } from '../api/envVars'
 import { fetchDeployments } from '../api/deployments'
 import { ApiError } from '../api/utils'
+import { useDeploymentStatus } from '../hooks/useDeploymentStatus'
+import { useWebSocket } from '../hooks/useWebSocket'
 
 export function ServiceDetail({ serviceId, onBack }) {
   const navigate = useNavigate()
@@ -66,16 +68,27 @@ export function ServiceDetail({ serviceId, onBack }) {
   const [fixingPort, setFixingPort] = useState(false)
 
   const toast = useToast()
+  const { connectionState: wsConnectionState, isConnected: wsIsConnected } = useWebSocket()
+
+  // Get the latest deployment ID for log streaming and WebSocket subscription
+  const latestDeploymentId = deployments[0]?.id
+
+  // Use WebSocket for real-time deployment status updates
+  const {
+    status: wsDeploymentStatus,
+    message: wsDeploymentMessage,
+    isActive: wsIsActive,
+    isComplete: wsIsComplete,
+    isFailed: wsIsFailed
+  } = useDeploymentStatus(latestDeploymentId, deployments[0])
 
   // Check if any deployment is in progress
-  const hasActiveDeployment = () => {
+  const hasActiveDeployment = useCallback(() => {
     if (!deployments.length) return false
-    const latestStatus = deployments[0]?.status
+    // Use WebSocket status if available, otherwise fall back to local state
+    const latestStatus = wsDeploymentStatus || deployments[0]?.status
     return ['pending', 'building', 'deploying'].includes(latestStatus)
-  }
-
-  // Get the latest deployment ID for log streaming
-  const latestDeploymentId = deployments[0]?.id
+  }, [deployments, wsDeploymentStatus])
 
   // Auto-show build logs when a deployment is active
   useEffect(() => {
@@ -83,7 +96,7 @@ export function ServiceDetail({ serviceId, onBack }) {
       setShowBuildLogs(true)
       setBuildLogsCollapsed(false)
     }
-  }, [deployments])
+  }, [hasActiveDeployment])
 
   // Initial load
   useEffect(() => {
@@ -92,11 +105,43 @@ export function ServiceDetail({ serviceId, onBack }) {
     }
   }, [serviceId])
 
-  // Real-time polling when deployment is in progress
+  // Handle WebSocket status updates
+  useEffect(() => {
+    if (!wsDeploymentStatus || !latestDeploymentId) return
+
+    // Update deployments array with new status from WebSocket
+    setDeployments(prev => {
+      if (prev.length === 0) return prev
+      const updated = [...prev]
+      if (updated[0]?.id === latestDeploymentId) {
+        updated[0] = { ...updated[0], status: wsDeploymentStatus }
+      }
+      return updated
+    })
+
+    // Notify on status changes
+    const notifyKey = `${latestDeploymentId}-${wsDeploymentStatus}`
+    if (notifyKey !== lastNotifiedStatus) {
+      if (wsDeploymentStatus === 'live') {
+        toast.success('Deployment completed successfully!')
+        setLastNotifiedStatus(notifyKey)
+        // Refresh service data to get final state
+        loadServiceData()
+      } else if (wsDeploymentStatus === 'failed') {
+        toast.error('Deployment failed')
+        setLastNotifiedStatus(notifyKey)
+        // Refresh to get error details
+        loadServiceData()
+      }
+    }
+  }, [wsDeploymentStatus, latestDeploymentId, lastNotifiedStatus, toast])
+
+  // Fallback polling when WebSocket is not connected
   useEffect(() => {
     if (!serviceId || loading) return
 
-    const shouldPoll = hasActiveDeployment()
+    // Only use polling as fallback when WebSocket is disconnected
+    const shouldPoll = hasActiveDeployment() && !wsIsConnected()
     if (!shouldPoll) return
 
     const pollInterval = setInterval(async () => {
@@ -108,11 +153,11 @@ export function ServiceDetail({ serviceId, onBack }) {
         setService(serviceData)
 
         const newDeployments = deploymentsData.deployments || []
-        const latestDeploymentId = newDeployments[0]?.id
+        const latestId = newDeployments[0]?.id
         const latestStatus = newDeployments[0]?.status
 
         // Only notify once per status change per deployment
-        const notifyKey = `${latestDeploymentId}-${latestStatus}`
+        const notifyKey = `${latestId}-${latestStatus}`
         if (notifyKey !== lastNotifiedStatus) {
           if (latestStatus === 'live') {
             toast.success('Deployment completed successfully!')
@@ -127,10 +172,10 @@ export function ServiceDetail({ serviceId, onBack }) {
       } catch (err) {
         console.error('Polling error:', err)
       }
-    }, 3000) // Poll every 3 seconds
+    }, 3000) // Poll every 3 seconds as fallback
 
     return () => clearInterval(pollInterval)
-  }, [serviceId, loading, deployments, lastNotifiedStatus])
+  }, [serviceId, loading, deployments, lastNotifiedStatus, wsIsConnected, hasActiveDeployment])
 
   const loadServiceData = async () => {
     setLoading(true)
@@ -466,7 +511,13 @@ export function ServiceDetail({ serviceId, onBack }) {
             {hasActiveDeployment() && (
               <span className="font-mono text-xs text-terminal-cyan animate-pulse flex items-center gap-1">
                 <span className="inline-block w-2 h-2 bg-terminal-cyan rounded-full animate-ping" />
-                AUTO-REFRESHING
+                {wsIsConnected() ? 'LIVE UPDATES' : 'AUTO-REFRESHING'}
+              </span>
+            )}
+            {wsConnectionState === 'connected' && (
+              <span className="font-mono text-xs text-terminal-green flex items-center gap-1" title="WebSocket connected">
+                <span className="inline-block w-1.5 h-1.5 bg-terminal-green rounded-full" />
+                WS
               </span>
             )}
             <span className="font-mono text-xs text-terminal-muted">

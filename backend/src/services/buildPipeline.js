@@ -19,6 +19,7 @@ import { parseGitHubUrl, getDockerfileExposedPort } from './github.js';
 import { updateDeploymentStatus } from '../routes/deployments.js';
 import { decrypt } from './encryption.js';
 import { sendDeploymentNotification } from './notifications.js';
+import appEvents from './event-emitter.js';
 
 const HARBOR_REGISTRY = process.env.HARBOR_REGISTRY || 'harbor.192.168.1.124.nip.io';
 const BASE_DOMAIN = process.env.BASE_DOMAIN || '192.168.1.124.nip.io';
@@ -77,6 +78,14 @@ async function createGitSecret(namespace, secretName, githubToken) {
 export async function triggerBuild(db, service, deployment, commitSha, githubToken, namespace, userHash) {
   // Update deployment status to building
   await updateDeploymentStatus(db, deployment.id, 'building');
+
+  // Emit WebSocket event for real-time update
+  appEvents.emitDeploymentStatus(deployment.id, {
+    status: 'building',
+    previousStatus: 'pending',
+    commitSha,
+    message: 'Starting build...'
+  });
 
   const jobName = generateJobName(service.name, commitSha);
   const imageTag = generateImageTag(namespace, service.name, commitSha);
@@ -167,6 +176,14 @@ export async function watchBuildJob(db, namespace, jobName, deploymentId, gitSec
           image_tag: imageTag,
         });
 
+        // Emit WebSocket event for real-time update
+        appEvents.emitDeploymentStatus(deploymentId, {
+          status: 'deploying',
+          previousStatus: 'building',
+          imageTag,
+          message: 'Build completed, deploying...'
+        });
+
         // Cleanup
         await cleanupBuildJob(namespace, jobName, gitSecretName);
 
@@ -179,6 +196,13 @@ export async function watchBuildJob(db, namespace, jobName, deploymentId, gitSec
 
         await updateDeploymentStatus(db, deploymentId, 'failed', {
           build_logs: logs,
+        });
+
+        // Emit WebSocket event for real-time update
+        appEvents.emitDeploymentStatus(deploymentId, {
+          status: 'failed',
+          previousStatus: 'building',
+          message: 'Build failed'
         });
 
         // Cleanup
@@ -205,6 +229,13 @@ export async function watchBuildJob(db, namespace, jobName, deploymentId, gitSec
 
   await updateDeploymentStatus(db, deploymentId, 'failed', {
     build_logs: `Build timed out after ${BUILD_TIMEOUT / 1000} seconds\n\n${logs}`,
+  });
+
+  // Emit WebSocket event for real-time update
+  appEvents.emitDeploymentStatus(deploymentId, {
+    status: 'failed',
+    previousStatus: 'building',
+    message: `Build timed out after ${BUILD_TIMEOUT / 1000} seconds`
   });
 
   await cleanupBuildJob(namespace, jobName, gitSecretName);
@@ -305,9 +336,24 @@ export async function deployService(db, service, deployment, imageTag, namespace
 
     // Update deployment status to live
     await updateDeploymentStatus(db, deployment.id, 'live');
+
+    // Emit WebSocket event for real-time update
+    appEvents.emitDeploymentStatus(deployment.id, {
+      status: 'live',
+      previousStatus: 'deploying',
+      imageTag,
+      message: 'Deployment successful'
+    });
   } catch (error) {
     await updateDeploymentStatus(db, deployment.id, 'failed', {
       build_logs: (deployment.build_logs || '') + `\n\nDeploy failed: ${error.message}`,
+    });
+
+    // Emit WebSocket event for real-time update
+    appEvents.emitDeploymentStatus(deployment.id, {
+      status: 'failed',
+      previousStatus: 'deploying',
+      message: `Deploy failed: ${error.message}`
     });
 
     throw error;

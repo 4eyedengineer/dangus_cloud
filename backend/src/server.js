@@ -4,6 +4,7 @@ import cors from '@fastify/cors';
 import websocket from '@fastify/websocket';
 import databasePlugin from './plugins/database.js';
 import authPlugin from './plugins/auth.js';
+import websocketHubPlugin from './plugins/websocket-hub.js';
 import authRoutes from './routes/auth.js';
 import projectRoutes from './routes/projects.js';
 import serviceRoutes from './routes/services.js';
@@ -86,6 +87,9 @@ fastify.register(cookie, {
 // Register auth plugin (provides fastify.authenticate)
 fastify.register(authPlugin);
 
+// Register WebSocket hub plugin for real-time updates
+fastify.register(websocketHubPlugin);
+
 // Register auth routes
 fastify.register(authRoutes);
 
@@ -115,6 +119,8 @@ const publicRoutes = [
   { method: 'GET', url: '/health' },
   { method: 'GET', url: '/auth/github' },
   { method: 'GET', url: '/auth/github/callback' },
+  { method: 'GET', url: '/ws' },
+  { method: 'GET', url: '/ws/stats' },
 ];
 
 // Apply authentication to all routes except public ones and webhooks
