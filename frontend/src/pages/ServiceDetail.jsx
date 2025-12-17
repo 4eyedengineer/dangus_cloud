@@ -13,7 +13,7 @@ import { DomainManager } from '../components/DomainManager'
 import { LogViewer } from '../components/LogViewer'
 import { HealthStatus } from '../components/HealthStatus'
 import { CloneServiceModal } from '../components/CloneServiceModal'
-import { fetchService, triggerDeploy, fetchWebhookSecret, restartService, fetchServiceMetrics, validateDockerfile, fetchServiceHealth, fetchSuggestedPort, fixServicePort } from '../api/services'
+import { fetchService, triggerDeploy, fetchWebhookSecret, restartService, fetchServiceMetrics, validateDockerfile, fetchServiceHealth, fetchSuggestedPort, fixServicePort, rollbackService } from '../api/services'
 import { fetchEnvVars, createEnvVar, updateEnvVar, deleteEnvVar, revealEnvVar } from '../api/envVars'
 import { fetchDeployments } from '../api/deployments'
 import { ApiError } from '../api/utils'
@@ -55,6 +55,9 @@ export function ServiceDetail({ serviceId, onBack }) {
   const [restarting, setRestarting] = useState(false)
   const [showRestartMenu, setShowRestartMenu] = useState(false)
   const [lastNotifiedStatus, setLastNotifiedStatus] = useState(null)
+
+  const [showRollbackModal, setShowRollbackModal] = useState(null)
+  const [rollingBack, setRollingBack] = useState(false)
 
   const [validating, setValidating] = useState(false)
   const [validation, setValidation] = useState(null)
@@ -328,6 +331,37 @@ export function ServiceDetail({ serviceId, onBack }) {
     } finally {
       setFixingPort(false)
     }
+  }
+
+  const handleRollback = async (deployment) => {
+    setRollingBack(true)
+    try {
+      const newDeployment = await rollbackService(serviceId, deployment.id)
+      setDeployments(prev => [newDeployment, ...prev])
+      setShowRollbackModal(null)
+      toast.success('Rollback initiated - deploying previous version')
+      // Show build logs for the rollback deployment
+      setShowBuildLogs(true)
+      setBuildLogsCollapsed(false)
+      // Refresh service data
+      const updatedService = await fetchService(serviceId)
+      setService(updatedService)
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'Failed to initiate rollback'
+      toast.error(message)
+    } finally {
+      setRollingBack(false)
+    }
+  }
+
+  // Get the latest live deployment (for determining which deployments can be rolled back to)
+  const latestLiveDeployment = deployments.find(d => d.status === 'live')
+
+  // Check if a deployment is a rollback candidate (live, has image_tag, and not the current deployment)
+  const isRollbackCandidate = (deployment) => {
+    return deployment.status === 'live' &&
+           deployment.image_tag &&
+           deployment.id !== latestLiveDeployment?.id
   }
 
   const formatDate = (dateStr) => {
@@ -957,9 +991,9 @@ export function ServiceDetail({ serviceId, onBack }) {
               <div className="font-mono text-xs text-terminal-muted border-b border-terminal-border p-3">
                 <div className="grid grid-cols-12 gap-2">
                   <div className="col-span-1">STS</div>
-                  <div className="col-span-3">COMMIT</div>
-                  <div className="col-span-5">TIMESTAMP</div>
-                  <div className="col-span-3">STATUS</div>
+                  <div className="col-span-2">COMMIT</div>
+                  <div className="col-span-4">TIMESTAMP</div>
+                  <div className="col-span-5">STATUS</div>
                 </div>
               </div>
 
@@ -973,23 +1007,38 @@ export function ServiceDetail({ serviceId, onBack }) {
                 >
                   <div className="grid grid-cols-12 gap-2 items-center">
                     <div className="col-span-1">
-                      <StatusIndicator
-                        status={getDeploymentStatusIndicator(deployment.status)}
-                        showLabel={false}
-                        size="sm"
-                      />
+                      {deployment.rollback_to ? (
+                        <span className="text-terminal-cyan" title="Rollback deployment">↩</span>
+                      ) : (
+                        <StatusIndicator
+                          status={getDeploymentStatusIndicator(deployment.status)}
+                          showLabel={false}
+                          size="sm"
+                        />
+                      )}
                     </div>
-                    <div className="col-span-3 text-terminal-primary truncate">
+                    <div className="col-span-2 text-terminal-primary truncate">
                       {deployment.commit_sha?.substring(0, 7) || 'N/A'}
                     </div>
-                    <div className="col-span-5 text-terminal-muted">
+                    <div className="col-span-4 text-terminal-muted">
                       {formatDate(deployment.created_at)}
                     </div>
-                    <div className="col-span-3">
+                    <div className="col-span-5 flex items-center gap-2">
                       {index === 0 && deployment.status === 'live' ? (
                         <span className="text-terminal-primary text-xs">[CURRENT]</span>
+                      ) : deployment.rollback_to ? (
+                        <span className="text-terminal-cyan text-xs">ROLLBACK</span>
                       ) : (
                         <span className="text-terminal-muted text-xs">{getStatusText(deployment.status)}</span>
+                      )}
+                      {isRollbackCandidate(deployment) && (
+                        <button
+                          onClick={() => setShowRollbackModal(deployment)}
+                          className="text-terminal-cyan hover:text-terminal-primary text-xs ml-auto"
+                          disabled={rollingBack || hasActiveDeployment()}
+                        >
+                          [ROLLBACK]
+                        </button>
                       )}
                     </div>
                   </div>
@@ -1206,6 +1255,47 @@ export function ServiceDetail({ serviceId, onBack }) {
             navigate(`/services/${newService.id}`)
           }}
         />
+      )}
+
+      {/* Rollback Confirmation Modal */}
+      {showRollbackModal && (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
+          <div className="w-full max-w-md mx-4">
+            <div className="font-mono whitespace-pre text-terminal-cyan select-none">
+              +-- CONFIRM ROLLBACK -----------------------+
+            </div>
+            <div className="border-l border-r border-terminal-cyan bg-terminal-bg-secondary px-6 py-6">
+              <p className="font-mono text-terminal-primary mb-2">
+                Rollback to deployment {showRollbackModal.commit_sha?.substring(0, 7)}?
+              </p>
+              <p className="font-mono text-xs text-terminal-muted mb-2">
+                This will redeploy the image from this deployment without rebuilding.
+              </p>
+              <p className="font-mono text-xs text-terminal-muted mb-6">
+                Deployed: {formatDate(showRollbackModal.created_at)}
+              </p>
+              <div className="flex justify-end gap-3">
+                <TerminalButton
+                  variant="secondary"
+                  onClick={() => setShowRollbackModal(null)}
+                  disabled={rollingBack}
+                >
+                  [ CANCEL ]
+                </TerminalButton>
+                <TerminalButton
+                  variant="primary"
+                  onClick={() => handleRollback(showRollbackModal)}
+                  disabled={rollingBack}
+                >
+                  {rollingBack ? '[ ROLLING BACK... ]' : '[ ROLLBACK ]'}
+                </TerminalButton>
+              </div>
+            </div>
+            <div className="font-mono whitespace-pre text-terminal-cyan select-none">
+              +--------------------------------------------+
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )
