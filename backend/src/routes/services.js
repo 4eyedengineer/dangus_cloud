@@ -991,6 +991,13 @@ export default async function serviceRoutes(fastify, options) {
         fastify.log.info(`Created deployment ${deployment.id} for service ${serviceId} at commit ${commitSha}`);
       }
 
+      // Construct project object for notifications
+      const project = {
+        id: service.project_id,
+        name: service.project_name,
+        user_id: service.user_id,
+      };
+
       // Trigger build pipeline asynchronously (don't await - runs in background)
       runBuildPipeline(
         fastify.db,
@@ -999,7 +1006,8 @@ export default async function serviceRoutes(fastify, options) {
         commitSha,
         githubToken,
         namespace,
-        userHash
+        userHash,
+        project
       ).catch(err => {
         fastify.log.error(`Build pipeline failed for deployment ${deployment.id}: ${err.message}`);
       });
@@ -2155,6 +2163,13 @@ export default async function serviceRoutes(fastify, options) {
           }
         }
 
+        // Construct project object for notifications
+        const project = {
+          id: targetProjectId,
+          name: projectName,
+          user_id: userId,
+        };
+
         // Trigger build pipeline asynchronously
         runBuildPipeline(
           fastify.db,
@@ -2163,7 +2178,8 @@ export default async function serviceRoutes(fastify, options) {
           commitSha || 'clone-deploy',
           githubToken,
           namespace,
-          userHash
+          userHash,
+          project
         ).catch(err => {
           fastify.log.error(`Build pipeline failed for cloned service ${newService.id}: ${err.message}`);
         });

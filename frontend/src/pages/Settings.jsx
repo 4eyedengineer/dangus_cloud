@@ -7,6 +7,12 @@ import TerminalInput from '../components/TerminalInput'
 import TerminalToggle from '../components/TerminalToggle'
 import { useToast } from '../components/Toast'
 import { getCurrentUser, logout, getLoginUrl } from '../api/auth'
+import {
+  getNotificationSettings,
+  updateNotificationSettings,
+  sendTestNotification,
+  getNotificationHistory
+} from '../api/notifications'
 
 const PREFERENCES_KEY = 'dangus_cloud_preferences'
 
@@ -24,6 +30,22 @@ export function Settings({ user, onLogout }) {
   const [saving, setSaving] = useState(false)
   const toast = useToast()
 
+  // Notification settings state
+  const [notificationSettings, setNotificationSettings] = useState({
+    email_enabled: false,
+    email_address: '',
+    webhook_enabled: false,
+    webhook_url: '',
+    webhook_secret: null,
+    notify_on_success: true,
+    notify_on_failure: true,
+  })
+  const [notificationHistory, setNotificationHistory] = useState([])
+  const [loadingNotifications, setLoadingNotifications] = useState(true)
+  const [savingNotifications, setSavingNotifications] = useState(false)
+  const [testingNotifications, setTestingNotifications] = useState(false)
+  const [showWebhookSecret, setShowWebhookSecret] = useState(false)
+
   useEffect(() => {
     // Load preferences from localStorage
     const stored = localStorage.getItem(PREFERENCES_KEY)
@@ -34,7 +56,98 @@ export function Settings({ user, onLogout }) {
         // Invalid JSON, use defaults
       }
     }
+
+    // Load notification settings from server
+    loadNotificationSettings()
   }, [])
+
+  const loadNotificationSettings = async () => {
+    try {
+      setLoadingNotifications(true)
+      const [settings, history] = await Promise.all([
+        getNotificationSettings(),
+        getNotificationHistory({ limit: 10 })
+      ])
+      setNotificationSettings({
+        email_enabled: settings.email_enabled || false,
+        email_address: settings.email_address || '',
+        webhook_enabled: settings.webhook_enabled || false,
+        webhook_url: settings.webhook_url || '',
+        webhook_secret: settings.webhook_secret || null,
+        notify_on_success: settings.notify_on_success ?? true,
+        notify_on_failure: settings.notify_on_failure ?? true,
+      })
+      setNotificationHistory(history.notifications || [])
+    } catch (err) {
+      // Settings might not exist yet, use defaults
+      console.log('Could not load notification settings:', err.message)
+    } finally {
+      setLoadingNotifications(false)
+    }
+  }
+
+  const handleSaveNotificationSettings = async () => {
+    try {
+      setSavingNotifications(true)
+      const result = await updateNotificationSettings(notificationSettings)
+      setNotificationSettings(prev => ({
+        ...prev,
+        webhook_secret: result.webhook_secret || prev.webhook_secret,
+      }))
+      toast.success('Notification settings saved')
+    } catch (err) {
+      toast.error(`Failed to save: ${err.message}`)
+    } finally {
+      setSavingNotifications(false)
+    }
+  }
+
+  const handleTestNotification = async () => {
+    try {
+      setTestingNotifications(true)
+      const result = await sendTestNotification()
+      const messages = []
+      if (result.results?.webhook) {
+        messages.push(result.results.webhook.success
+          ? 'Webhook: sent'
+          : `Webhook: ${result.results.webhook.error}`)
+      }
+      if (result.results?.email) {
+        messages.push(result.results.email.success
+          ? 'Email: sent'
+          : `Email: ${result.results.email.error}`)
+      }
+      if (messages.length > 0) {
+        toast.success(messages.join(' | '))
+      } else {
+        toast.info('No notification channels enabled')
+      }
+    } catch (err) {
+      toast.error(`Test failed: ${err.message}`)
+    } finally {
+      setTestingNotifications(false)
+    }
+  }
+
+  const handleRegenerateSecret = async () => {
+    try {
+      setSavingNotifications(true)
+      const result = await updateNotificationSettings({
+        ...notificationSettings,
+        regenerate_secret: true,
+      })
+      setNotificationSettings(prev => ({
+        ...prev,
+        webhook_secret: result.webhook_secret,
+      }))
+      setShowWebhookSecret(true)
+      toast.success('Webhook secret regenerated')
+    } catch (err) {
+      toast.error(`Failed to regenerate: ${err.message}`)
+    } finally {
+      setSavingNotifications(false)
+    }
+  }
 
   const savePreferences = (newPrefs) => {
     setPreferences(newPrefs)
@@ -207,19 +320,181 @@ export function Settings({ user, onLogout }) {
           </div>
         </AsciiBox>
 
-        <AsciiBox title="Notifications" variant="green">
-          <div className="space-y-3">
-            <TerminalToggle
-              checked={preferences.notifications}
-              onChange={(e) => handlePreferenceChange('notifications', e.target.checked)}
-              label="Enable deployment notifications"
-              id="notifications-toggle"
-            />
-            <p className="font-mono text-xs text-terminal-muted">
-              Receive in-app notifications for deployment events
-            </p>
-          </div>
+        <AsciiBox title="Deployment Notifications" variant="green">
+          {loadingNotifications ? (
+            <p className="font-mono text-xs text-terminal-muted">Loading...</p>
+          ) : (
+            <div className="space-y-6">
+              {/* Email Settings */}
+              <div className="space-y-3">
+                <TerminalToggle
+                  checked={notificationSettings.email_enabled}
+                  onChange={(e) => setNotificationSettings(prev => ({
+                    ...prev,
+                    email_enabled: e.target.checked
+                  }))}
+                  label="Email notifications"
+                  id="email-notifications-toggle"
+                />
+                {notificationSettings.email_enabled && (
+                  <div>
+                    <label className="block font-mono text-xs text-terminal-muted uppercase mb-2">
+                      Email Address
+                    </label>
+                    <TerminalInput
+                      type="email"
+                      value={notificationSettings.email_address}
+                      onChange={(e) => setNotificationSettings(prev => ({
+                        ...prev,
+                        email_address: e.target.value
+                      }))}
+                      placeholder="your@email.com"
+                      className="w-full max-w-xs"
+                    />
+                  </div>
+                )}
+              </div>
+
+              {/* Webhook Settings */}
+              <div className="space-y-3">
+                <TerminalToggle
+                  checked={notificationSettings.webhook_enabled}
+                  onChange={(e) => setNotificationSettings(prev => ({
+                    ...prev,
+                    webhook_enabled: e.target.checked
+                  }))}
+                  label="Webhook notifications"
+                  id="webhook-notifications-toggle"
+                />
+                {notificationSettings.webhook_enabled && (
+                  <div className="space-y-3">
+                    <div>
+                      <label className="block font-mono text-xs text-terminal-muted uppercase mb-2">
+                        Webhook URL
+                      </label>
+                      <TerminalInput
+                        type="url"
+                        value={notificationSettings.webhook_url}
+                        onChange={(e) => setNotificationSettings(prev => ({
+                          ...prev,
+                          webhook_url: e.target.value
+                        }))}
+                        placeholder="https://your-server.com/webhook"
+                        className="w-full"
+                      />
+                    </div>
+                    {notificationSettings.webhook_secret && (
+                      <div className="p-3 bg-terminal-bg border border-terminal-border">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="font-mono text-xs text-terminal-muted uppercase">
+                            Webhook Secret
+                          </span>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => setShowWebhookSecret(!showWebhookSecret)}
+                              className="font-mono text-xs text-terminal-secondary hover:text-terminal-primary"
+                            >
+                              [{showWebhookSecret ? 'HIDE' : 'SHOW'}]
+                            </button>
+                            <button
+                              onClick={handleRegenerateSecret}
+                              disabled={savingNotifications}
+                              className="font-mono text-xs text-terminal-amber hover:text-terminal-primary"
+                            >
+                              [REGENERATE]
+                            </button>
+                          </div>
+                        </div>
+                        <code className="font-mono text-xs text-terminal-green break-all">
+                          {showWebhookSecret
+                            ? notificationSettings.webhook_secret
+                            : '••••••••••••••••••••••••••••••••'}
+                        </code>
+                        <p className="font-mono text-xs text-terminal-muted mt-2">
+                          Use this to verify webhook signatures (X-Dangus-Signature header)
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Notification Types */}
+              <div className="space-y-3 pt-3 border-t border-terminal-border">
+                <p className="font-mono text-xs text-terminal-muted uppercase">
+                  Notify On
+                </p>
+                <TerminalToggle
+                  checked={notificationSettings.notify_on_success}
+                  onChange={(e) => setNotificationSettings(prev => ({
+                    ...prev,
+                    notify_on_success: e.target.checked
+                  }))}
+                  label="Successful deployments"
+                  id="notify-success-toggle"
+                />
+                <TerminalToggle
+                  checked={notificationSettings.notify_on_failure}
+                  onChange={(e) => setNotificationSettings(prev => ({
+                    ...prev,
+                    notify_on_failure: e.target.checked
+                  }))}
+                  label="Failed deployments"
+                  id="notify-failure-toggle"
+                />
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex gap-3 pt-3 border-t border-terminal-border">
+                <TerminalButton
+                  variant="primary"
+                  onClick={handleSaveNotificationSettings}
+                  disabled={savingNotifications}
+                >
+                  {savingNotifications ? '[ SAVING... ]' : '[ SAVE ]'}
+                </TerminalButton>
+                <TerminalButton
+                  variant="secondary"
+                  onClick={handleTestNotification}
+                  disabled={testingNotifications || (!notificationSettings.email_enabled && !notificationSettings.webhook_enabled)}
+                >
+                  {testingNotifications ? '[ SENDING... ]' : '[ SEND TEST ]'}
+                </TerminalButton>
+              </div>
+            </div>
+          )}
         </AsciiBox>
+
+        {/* Notification History */}
+        {notificationHistory.length > 0 && (
+          <AsciiBox title="Recent Notifications" variant="amber">
+            <div className="space-y-2">
+              {notificationHistory.map((notification) => (
+                <div
+                  key={notification.id}
+                  className="flex items-center justify-between p-2 bg-terminal-bg border border-terminal-border"
+                >
+                  <div className="flex items-center gap-3">
+                    <span className={`font-mono text-xs ${
+                      notification.status === 'sent' ? 'text-terminal-green' : 'text-terminal-red'
+                    }`}>
+                      [{notification.status.toUpperCase()}]
+                    </span>
+                    <span className="font-mono text-xs text-terminal-secondary">
+                      {notification.type}
+                    </span>
+                    <span className="font-mono text-xs text-terminal-muted">
+                      {notification.service_name}
+                    </span>
+                  </div>
+                  <span className="font-mono text-xs text-terminal-muted">
+                    {formatDate(notification.created_at)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </AsciiBox>
+        )}
       </div>
 
       <AsciiDivider variant="single" color="muted" className="my-6" />

@@ -18,6 +18,7 @@ import {
 import { parseGitHubUrl, getDockerfileExposedPort } from './github.js';
 import { updateDeploymentStatus } from '../routes/deployments.js';
 import { decrypt } from './encryption.js';
+import { sendDeploymentNotification } from './notifications.js';
 
 const HARBOR_REGISTRY = process.env.HARBOR_REGISTRY || 'harbor.192.168.1.124.nip.io';
 const BASE_DOMAIN = process.env.BASE_DOMAIN || '192.168.1.124.nip.io';
@@ -491,10 +492,22 @@ export async function detectDockerfilePort(db, service, githubToken) {
  * @param {string} githubToken - Decrypted GitHub token (null for image-only services)
  * @param {string} namespace - Kubernetes namespace
  * @param {string} userHash - User hash for subdomain
+ * @param {object} project - Project object (optional, for notifications)
  */
-export async function runBuildPipeline(db, service, deployment, commitSha, githubToken, namespace, userHash) {
+export async function runBuildPipeline(db, service, deployment, commitSha, githubToken, namespace, userHash, project = null) {
   // Get decrypted env vars (needed for both paths)
   const envVars = await getDecryptedEnvVars(db, service.id);
+
+  // Helper to send notifications
+  const notifyCompletion = async (finalDeployment) => {
+    if (project) {
+      try {
+        await sendDeploymentNotification(db, finalDeployment, service, project);
+      } catch (notifyErr) {
+        logger.error('Failed to send deployment notification', { error: notifyErr.message });
+      }
+    }
+  };
 
   // For image-only services (no repo_url), skip build and deploy directly
   if (service.image && !service.repo_url) {
@@ -506,6 +519,10 @@ export async function runBuildPipeline(db, service, deployment, commitSha, githu
 
     // Deploy directly with the specified image
     await deployService(db, service, deployment, service.image, namespace, userHash, envVars);
+
+    // Get updated deployment for notification
+    const finalDeployment = await getDeploymentById(db, deployment.id);
+    await notifyCompletion(finalDeployment);
 
     return { success: true, imageTag: service.image };
   }
@@ -546,6 +563,9 @@ export async function runBuildPipeline(db, service, deployment, commitSha, githu
   const buildResult = await watchBuildJob(db, namespace, jobName, deployment.id, gitSecretName);
 
   if (!buildResult.success) {
+    // Get updated deployment for failure notification
+    const finalDeployment = await getDeploymentById(db, deployment.id);
+    await notifyCompletion(finalDeployment);
     return { success: false, error: 'Build failed' };
   }
 
@@ -560,5 +580,23 @@ export async function runBuildPipeline(db, service, deployment, commitSha, githu
   // Deploy the service
   await deployService(db, service, deployment, buildResult.imageTag, namespace, userHash, envVars);
 
+  // Get updated deployment for notification
+  const finalDeployment = await getDeploymentById(db, deployment.id);
+  await notifyCompletion(finalDeployment);
+
   return { success: true, imageTag: buildResult.imageTag, detectedPort, hasMismatch };
+}
+
+/**
+ * Get deployment by ID
+ * @param {object} db - Database connection
+ * @param {string} deploymentId - Deployment UUID
+ * @returns {Promise<object>} Deployment object
+ */
+async function getDeploymentById(db, deploymentId) {
+  const result = await db.query(
+    'SELECT * FROM deployments WHERE id = $1',
+    [deploymentId]
+  );
+  return result.rows[0];
 }
