@@ -11,6 +11,7 @@ import deploymentRoutes from './routes/deployments.js';
 import webhookRoutes from './routes/webhooks.js';
 import githubRoutes from './routes/github.js';
 import domainRoutes from './routes/domains.js';
+import notificationRoutes from './routes/notifications.js';
 
 const fastify = Fastify({
   logger: true,
@@ -105,6 +106,9 @@ fastify.register(githubRoutes);
 
 // Register domain routes
 fastify.register(domainRoutes);
+
+// Register notification routes
+fastify.register(notificationRoutes);
 
 // Routes that do not require authentication
 const publicRoutes = [
