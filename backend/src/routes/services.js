@@ -2,7 +2,7 @@ import { generateWebhookSecret } from '../services/encryption.js';
 import { deleteDeployment, deleteService, deleteIngress, deletePVC, rolloutRestart, deleteServicePods, getPodMetrics, getDeployment, getPodsByLabel, getPodLogs, streamPodLogs, getPodHealth, getPodEvents, patchService, patchDeployment, patchIngress } from '../services/kubernetes.js';
 import { getLatestCommit, getFileContent, getDockerfileExposedPort } from '../services/github.js';
 import { decrypt, encrypt } from '../services/encryption.js';
-import { runBuildPipeline } from '../services/buildPipeline.js';
+import { runBuildPipeline, deployService, getDecryptedEnvVars } from '../services/buildPipeline.js';
 import { validateDockerfile } from '../services/dockerfileValidator.js';
 import { performHealthCheck, getHealthHistory } from '../services/healthChecker.js';
 
@@ -1013,6 +1013,113 @@ export default async function serviceRoutes(fastify, options) {
       return reply.code(500).send({
         error: 'Internal Server Error',
         message: 'Failed to trigger deployment',
+      });
+    }
+  });
+
+  /**
+   * POST /services/:id/rollback
+   * Rollback to a previous successful deployment
+   */
+  fastify.post('/services/:id/rollback', {
+    schema: {
+      ...serviceParamsSchema,
+      body: {
+        type: 'object',
+        required: ['deployment_id'],
+        properties: {
+          deployment_id: { type: 'string', format: 'uuid' }
+        }
+      }
+    }
+  }, async (request, reply) => {
+    const userId = request.user.id;
+    const userHash = request.user.hash;
+    const serviceId = request.params.id;
+    const { deployment_id: targetDeploymentId } = request.body;
+
+    // Verify ownership
+    const ownershipCheck = await verifyServiceOwnership(serviceId, userId);
+    if (ownershipCheck.error) {
+      return reply.code(ownershipCheck.status).send({
+        error: ownershipCheck.status === 404 ? 'Not Found' : 'Forbidden',
+        message: ownershipCheck.error,
+      });
+    }
+
+    const { service } = ownershipCheck;
+    const namespace = computeNamespace(userHash, service.project_name);
+
+    try {
+      // Get target deployment
+      const targetDeployment = await fastify.db.query(
+        'SELECT * FROM deployments WHERE id = $1 AND service_id = $2',
+        [targetDeploymentId, serviceId]
+      );
+
+      if (targetDeployment.rows.length === 0) {
+        return reply.code(404).send({
+          error: 'Not Found',
+          message: 'Target deployment not found',
+        });
+      }
+
+      const target = targetDeployment.rows[0];
+
+      // Validate target deployment
+      if (target.status !== 'live') {
+        return reply.code(400).send({
+          error: 'Bad Request',
+          message: 'Can only rollback to successful (live) deployments',
+        });
+      }
+
+      if (!target.image_tag) {
+        return reply.code(400).send({
+          error: 'Bad Request',
+          message: 'Target deployment has no image tag (legacy deployment)',
+        });
+      }
+
+      // Create new deployment record for the rollback
+      const result = await fastify.db.query(
+        `INSERT INTO deployments (service_id, commit_sha, status, image_tag, build_logs, rollback_to)
+         VALUES ($1, $2, 'deploying', $3, 'Rollback deployment - skipping build', $4)
+         RETURNING *`,
+        [serviceId, target.commit_sha, target.image_tag, targetDeploymentId]
+      );
+
+      const newDeployment = result.rows[0];
+
+      fastify.log.info(`Rollback initiated: deployment ${newDeployment.id} rolling back to ${targetDeploymentId}`);
+
+      // Get env vars and deploy the old image (skip build)
+      const envVars = await getDecryptedEnvVars(fastify.db, serviceId);
+
+      // Deploy asynchronously (don't await - runs in background)
+      deployService(
+        fastify.db,
+        service,
+        newDeployment,
+        target.image_tag,
+        namespace,
+        userHash,
+        envVars
+      ).catch(err => {
+        fastify.log.error(`Rollback deployment failed for ${newDeployment.id}: ${err.message}`);
+      });
+
+      return reply.code(201).send({
+        ...newDeployment,
+        message: 'Rollback initiated',
+        rollback_from: newDeployment.id,
+        rollback_to: targetDeploymentId,
+      });
+    } catch (err) {
+      fastify.log.error(`Failed to initiate rollback: ${err.message}`);
+      return reply.code(500).send({
+        error: 'Internal Server Error',
+        message: 'Failed to initiate rollback',
       });
     }
   });

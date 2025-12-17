@@ -106,7 +106,7 @@ export default async function deploymentRoutes(fastify, options) {
     try {
       // Get deployments with pagination
       const result = await fastify.db.query(
-        `SELECT id, commit_sha, status, image_tag, created_at
+        `SELECT id, commit_sha, status, image_tag, rollback_to, created_at
          FROM deployments
          WHERE service_id = $1
          ORDER BY created_at DESC
@@ -167,6 +167,7 @@ export default async function deploymentRoutes(fastify, options) {
       status: deployment.status,
       image_tag: deployment.image_tag,
       build_logs: deployment.build_logs,
+      rollback_to: deployment.rollback_to,
       created_at: deployment.created_at,
     };
   });

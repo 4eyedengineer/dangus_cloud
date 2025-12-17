@@ -138,3 +138,16 @@ export async function fixServicePort(id, port) {
     body: JSON.stringify(port ? { port } : {}),
   });
 }
+
+/**
+ * Rollback a service to a previous successful deployment
+ * @param {string} id - Service ID
+ * @param {string} deploymentId - Target deployment ID to rollback to
+ * @returns {Promise<{id: string, status: string, rollback_to: string, message: string}>}
+ */
+export async function rollbackService(id, deploymentId) {
+  return apiFetch(`/services/${id}/rollback`, {
+    method: 'POST',
+    body: JSON.stringify({ deployment_id: deploymentId }),
+  });
+}
