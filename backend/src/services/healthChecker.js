@@ -1,4 +1,5 @@
 import logger from './logger.js';
+import appEvents from './event-emitter.js';
 
 const BASE_DOMAIN = process.env.BASE_DOMAIN || '192.168.1.124.nip.io';
 const HEALTH_CHECK_INTERVAL = parseInt(process.env.HEALTH_CHECK_INTERVAL, 10) || 60000; // 1 minute default
@@ -146,6 +147,15 @@ async function runHealthChecks(db) {
         );
 
         await storeHealthCheck(db, service.id, healthResult);
+
+        // Emit WebSocket event for real-time health updates
+        appEvents.emitServiceHealth(service.id, {
+          status: healthResult.status,
+          statusCode: healthResult.statusCode,
+          responseTimeMs: healthResult.responseTimeMs,
+          error: healthResult.error,
+          lastCheck: healthResult.lastCheck
+        });
 
         if (healthResult.status === 'unhealthy') {
           logger.warn(`Health check failed for ${service.name}: ${healthResult.error || `Status ${healthResult.statusCode}`}`);

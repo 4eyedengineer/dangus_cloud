@@ -1,7 +1,8 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import TerminalSpinner from './TerminalSpinner'
 import { AsciiBox } from './AsciiBox'
 import { StatusIndicator } from './StatusIndicator'
+import { useWebSocket } from '../hooks/useWebSocket'
 
 function ResponseTimeChart({ history }) {
   if (!history || history.length === 0) {
@@ -119,7 +120,11 @@ export function HealthStatus({ serviceId, fetchHealth, refreshInterval = 30000 }
   const [health, setHealth] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  const [lastUpdate, setLastUpdate] = useState(null)
+  const { connectionState, subscribe, isConnected } = useWebSocket()
+  const fallbackIntervalRef = useRef(null)
 
+  // Initial fetch
   useEffect(() => {
     if (!serviceId || !fetchHealth) return
 
@@ -131,6 +136,7 @@ export function HealthStatus({ serviceId, fetchHealth, refreshInterval = 30000 }
         if (mounted) {
           setHealth(data)
           setError(null)
+          setLastUpdate(new Date().toISOString())
         }
       } catch (err) {
         if (mounted) {
@@ -146,14 +152,88 @@ export function HealthStatus({ serviceId, fetchHealth, refreshInterval = 30000 }
     // Initial load
     loadHealth()
 
-    // Set up polling
-    const interval = setInterval(loadHealth, refreshInterval)
-
     return () => {
       mounted = false
-      clearInterval(interval)
     }
-  }, [serviceId, fetchHealth, refreshInterval])
+  }, [serviceId, fetchHealth])
+
+  // WebSocket subscription for real-time updates
+  useEffect(() => {
+    if (!serviceId) return
+
+    const channel = `service:${serviceId}:health`
+
+    const unsubscribe = subscribe(channel, (event) => {
+      const { payload, timestamp } = event
+
+      // Merge WebSocket updates with existing health data
+      setHealth(prevHealth => {
+        if (!prevHealth) {
+          return {
+            configured: true,
+            status: payload.status,
+            activeCheck: {
+              status: payload.status,
+              statusCode: payload.statusCode,
+              responseTimeMs: payload.responseTimeMs,
+              error: payload.error
+            },
+            lastCheck: payload.lastCheck
+          }
+        }
+
+        return {
+          ...prevHealth,
+          status: payload.status,
+          activeCheck: {
+            status: payload.status,
+            statusCode: payload.statusCode,
+            responseTimeMs: payload.responseTimeMs,
+            error: payload.error
+          },
+          lastCheck: payload.lastCheck
+        }
+      })
+
+      setLastUpdate(timestamp || new Date().toISOString())
+      setError(null)
+    })
+
+    return () => {
+      unsubscribe()
+    }
+  }, [serviceId, subscribe])
+
+  // Fallback polling when WebSocket is not connected
+  useEffect(() => {
+    if (!serviceId || !fetchHealth) return
+
+    const loadHealth = async () => {
+      try {
+        const data = await fetchHealth(serviceId)
+        setHealth(data)
+        setError(null)
+        setLastUpdate(new Date().toISOString())
+      } catch (err) {
+        setError(err.message || 'Failed to load health status')
+      }
+    }
+
+    // Only use polling as fallback when WebSocket is not connected
+    if (!isConnected() && !fallbackIntervalRef.current) {
+      fallbackIntervalRef.current = setInterval(loadHealth, refreshInterval)
+    } else if (isConnected() && fallbackIntervalRef.current) {
+      clearInterval(fallbackIntervalRef.current)
+      fallbackIntervalRef.current = null
+    }
+
+    return () => {
+      if (fallbackIntervalRef.current) {
+        clearInterval(fallbackIntervalRef.current)
+        fallbackIntervalRef.current = null
+      }
+    }
+  }, [serviceId, fetchHealth, refreshInterval, connectionState, isConnected])
 
   if (loading) {
     return (
@@ -273,8 +353,15 @@ export function HealthStatus({ serviceId, fetchHealth, refreshInterval = 30000 }
         </div>
       )}
 
-      <div className="text-xs text-terminal-muted mt-3 text-right">
-        Auto-refreshing every {refreshInterval / 1000}s
+      <div className="text-xs text-terminal-muted mt-3 text-right flex items-center justify-end gap-2">
+        {isConnected() ? (
+          <span className="flex items-center gap-1 text-terminal-green">
+            <span className="inline-block w-1.5 h-1.5 bg-terminal-green rounded-full" />
+            Live updates
+          </span>
+        ) : (
+          <span>Auto-refreshing every {refreshInterval / 1000}s</span>
+        )}
       </div>
     </AsciiBox>
   )

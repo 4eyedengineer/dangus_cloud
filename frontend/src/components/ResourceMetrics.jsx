@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import TerminalSpinner from './TerminalSpinner'
 import { AsciiBox } from './AsciiBox'
+import { useWebSocket } from '../hooks/useWebSocket'
 
 function MetricGauge({ label, value, max, unit, showRaw = true }) {
   const percent = max ? Math.min(Math.round((value / max) * 100), 100) : 0
@@ -103,7 +104,11 @@ export function ResourceMetrics({ serviceId, fetchMetrics, refreshInterval = 500
   const [metrics, setMetrics] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  const [lastUpdate, setLastUpdate] = useState(null)
+  const { connectionState, subscribe, isConnected } = useWebSocket()
+  const fallbackIntervalRef = useRef(null)
 
+  // Initial fetch
   useEffect(() => {
     if (!serviceId || !fetchMetrics) return
 
@@ -115,6 +120,7 @@ export function ResourceMetrics({ serviceId, fetchMetrics, refreshInterval = 500
         if (mounted) {
           setMetrics(data)
           setError(null)
+          setLastUpdate(new Date().toISOString())
         }
       } catch (err) {
         if (mounted) {
@@ -130,14 +136,59 @@ export function ResourceMetrics({ serviceId, fetchMetrics, refreshInterval = 500
     // Initial load
     loadMetrics()
 
-    // Set up polling
-    const interval = setInterval(loadMetrics, refreshInterval)
-
     return () => {
       mounted = false
-      clearInterval(interval)
     }
-  }, [serviceId, fetchMetrics, refreshInterval])
+  }, [serviceId, fetchMetrics])
+
+  // WebSocket subscription for real-time updates
+  useEffect(() => {
+    if (!serviceId) return
+
+    const channel = `service:${serviceId}:metrics`
+
+    const unsubscribe = subscribe(channel, (event) => {
+      const { payload, timestamp } = event
+      setMetrics(payload)
+      setLastUpdate(timestamp || new Date().toISOString())
+      setError(null)
+    })
+
+    return () => {
+      unsubscribe()
+    }
+  }, [serviceId, subscribe])
+
+  // Fallback polling when WebSocket is not connected
+  useEffect(() => {
+    if (!serviceId || !fetchMetrics) return
+
+    const loadMetrics = async () => {
+      try {
+        const data = await fetchMetrics(serviceId)
+        setMetrics(data)
+        setError(null)
+        setLastUpdate(new Date().toISOString())
+      } catch (err) {
+        setError(err.message || 'Failed to load metrics')
+      }
+    }
+
+    // Only use polling as fallback when WebSocket is not connected
+    if (!isConnected() && !fallbackIntervalRef.current) {
+      fallbackIntervalRef.current = setInterval(loadMetrics, refreshInterval)
+    } else if (isConnected() && fallbackIntervalRef.current) {
+      clearInterval(fallbackIntervalRef.current)
+      fallbackIntervalRef.current = null
+    }
+
+    return () => {
+      if (fallbackIntervalRef.current) {
+        clearInterval(fallbackIntervalRef.current)
+        fallbackIntervalRef.current = null
+      }
+    }
+  }, [serviceId, fetchMetrics, refreshInterval, connectionState, isConnected])
 
   if (loading) {
     return (
@@ -210,8 +261,15 @@ export function ResourceMetrics({ serviceId, fetchMetrics, refreshInterval = 500
         </div>
       )}
 
-      <div className="text-xs text-terminal-muted mt-3 text-right">
-        Auto-refreshing every {refreshInterval / 1000}s
+      <div className="text-xs text-terminal-muted mt-3 text-right flex items-center justify-end gap-2">
+        {isConnected() ? (
+          <span className="flex items-center gap-1 text-terminal-green">
+            <span className="inline-block w-1.5 h-1.5 bg-terminal-green rounded-full" />
+            Live updates
+          </span>
+        ) : (
+          <span>Auto-refreshing every {refreshInterval / 1000}s</span>
+        )}
       </div>
     </AsciiBox>
   )

@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { AsciiLogo } from './AsciiLogo'
 import { StatusIndicator } from './StatusIndicator'
 import { AsciiDivider } from './AsciiDivider'
+import { useWebSocket } from '../hooks/useWebSocket'
 
 export function Layout({
   children,
@@ -23,6 +24,24 @@ export function Layout({
   const [currentTime, setCurrentTime] = useState(new Date())
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [isMobile, setIsMobile] = useState(false)
+  const { connectionState: wsConnectionState, reconnect: wsReconnect } = useWebSocket()
+
+  // Map WebSocket connection state to status indicator
+  const wsStatusMap = {
+    connected: 'online',
+    connecting: 'pending',
+    reconnecting: 'warning',
+    disconnected: 'offline',
+    failed: 'error'
+  }
+
+  const wsLabelMap = {
+    connected: 'WS LIVE',
+    connecting: 'WS CONNECTING',
+    reconnecting: 'WS RECONNECTING',
+    disconnected: 'WS OFFLINE',
+    failed: 'WS FAILED'
+  }
 
   // Update time every second
   useEffect(() => {
@@ -262,6 +281,21 @@ export function Layout({
               label="CONNECTED"
               size="sm"
             />
+            <span aria-hidden="true" className="text-terminal-muted">│</span>
+            <StatusIndicator
+              status={wsStatusMap[wsConnectionState] || 'offline'}
+              label={wsLabelMap[wsConnectionState] || 'WS UNKNOWN'}
+              size="sm"
+            />
+            {wsConnectionState === 'failed' && (
+              <button
+                onClick={wsReconnect}
+                className="text-terminal-secondary hover:text-terminal-primary transition-colors text-xs"
+                title="Reconnect WebSocket"
+              >
+                [RETRY]
+              </button>
+            )}
           </div>
 
           <div className="flex items-center gap-3 text-terminal-muted">

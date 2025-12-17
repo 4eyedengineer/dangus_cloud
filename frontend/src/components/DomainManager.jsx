@@ -1,10 +1,11 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { AsciiBox } from './AsciiBox'
 import TerminalButton from './TerminalButton'
 import TerminalInput from './TerminalInput'
 import { useToast } from './Toast'
 import { fetchDomains, addDomain, verifyDomain, deleteDomain, getDomain } from '../api/domains'
 import { ApiError } from '../api/utils'
+import { useWebSocket } from '../hooks/useWebSocket'
 
 export function DomainManager({ serviceId }) {
   const [domains, setDomains] = useState([])
@@ -23,6 +24,8 @@ export function DomainManager({ serviceId }) {
   const [copied, setCopied] = useState(null)
 
   const toast = useToast()
+  const { connectionState, subscribe, isConnected } = useWebSocket()
+  const pollIntervalRef = useRef(null)
 
   useEffect(() => {
     if (serviceId) {
@@ -30,31 +33,77 @@ export function DomainManager({ serviceId }) {
     }
   }, [serviceId])
 
-  // Poll for certificate status updates
+  // WebSocket subscriptions for domain certificate updates
+  useEffect(() => {
+    if (!domains.length) return
+
+    const unsubscribes = []
+
+    // Subscribe to certificate updates for each domain
+    for (const domain of domains) {
+      const channel = `domain:${domain.id}:certificate`
+
+      const unsubscribe = subscribe(channel, (event) => {
+        const { payload, timestamp } = event
+
+        setDomains(prev => prev.map(d => {
+          if (d.id === domain.id && payload.status !== d.certificate_status) {
+            if (payload.status === 'issued') {
+              toast.success(`TLS certificate issued for ${d.domain}`)
+            }
+            return { ...d, certificate_status: payload.status }
+          }
+          return d
+        }))
+      })
+
+      unsubscribes.push(unsubscribe)
+    }
+
+    return () => {
+      unsubscribes.forEach(unsub => unsub())
+    }
+  }, [domains, subscribe, toast])
+
+  // Fallback polling for certificate status updates when WebSocket is not connected
   useEffect(() => {
     const pendingDomains = domains.filter(d => d.verified && d.certificate_status === 'pending')
-    if (pendingDomains.length === 0) return
-
-    const pollInterval = setInterval(async () => {
-      for (const domain of pendingDomains) {
-        try {
-          const updated = await getDomain(serviceId, domain.id)
-          if (updated.certificate_status !== domain.certificate_status) {
-            setDomains(prev => prev.map(d =>
-              d.id === domain.id ? { ...d, certificate_status: updated.certificate_status } : d
-            ))
-            if (updated.certificate_status === 'issued') {
-              toast.success(`TLS certificate issued for ${domain.domain}`)
-            }
-          }
-        } catch (err) {
-          console.error('Failed to check certificate status:', err)
-        }
+    if (pendingDomains.length === 0 || isConnected()) {
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current)
+        pollIntervalRef.current = null
       }
-    }, 10000) // Poll every 10 seconds
+      return
+    }
 
-    return () => clearInterval(pollInterval)
-  }, [domains, serviceId])
+    // Only use polling as fallback when WebSocket is not connected
+    if (!pollIntervalRef.current) {
+      pollIntervalRef.current = setInterval(async () => {
+        for (const domain of pendingDomains) {
+          try {
+            const updated = await getDomain(serviceId, domain.id)
+            if (updated.certificate_status !== domain.certificate_status) {
+              setDomains(prev => prev.map(d =>
+                d.id === domain.id ? { ...d, certificate_status: updated.certificate_status } : d
+              ))
+              if (updated.certificate_status === 'issued') {
+                toast.success(`TLS certificate issued for ${domain.domain}`)
+              }
+            }
+          } catch (err) {
+            console.error('Failed to check certificate status:', err)
+          }
+        }
+      }, 10000) // Poll every 10 seconds as fallback
+    }
+
+    return () => {
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current)
+        pollIntervalRef.current = null
+      }
+    }
+  }, [domains, serviceId, connectionState, isConnected, toast])
 
   const loadDomains = async () => {
     setLoading(true)
