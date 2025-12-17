@@ -315,6 +315,59 @@ export async function getFileContent(token, repoUrl, filePath, branch) {
 }
 
 /**
+ * Parse Dockerfile content to extract EXPOSE directives
+ * Handles multi-stage Dockerfiles by using the last EXPOSE directive
+ * @param {string} dockerfileContent - Raw Dockerfile content
+ * @returns {number|null} - Exposed port number or null if not found
+ */
+export function parseDockerfileExpose(dockerfileContent) {
+  if (!dockerfileContent) return null;
+
+  // Split into lines and find all EXPOSE directives
+  const lines = dockerfileContent.split('\n');
+  let lastExposedPort = null;
+
+  for (const line of lines) {
+    // Match EXPOSE directive: EXPOSE 80, EXPOSE 80/tcp, EXPOSE 8080/udp
+    // Handle multiple ports: EXPOSE 80 443
+    const exposeMatch = line.match(/^\s*EXPOSE\s+(.+)/i);
+    if (exposeMatch) {
+      const portsStr = exposeMatch[1].trim();
+      // Split by whitespace for multiple ports, take the first one
+      const ports = portsStr.split(/\s+/);
+      for (const port of ports) {
+        // Remove protocol suffix if present (e.g., 80/tcp -> 80)
+        const portMatch = port.match(/^(\d+)/);
+        if (portMatch) {
+          lastExposedPort = parseInt(portMatch[1], 10);
+        }
+      }
+    }
+  }
+
+  return lastExposedPort;
+}
+
+/**
+ * Fetch Dockerfile from GitHub and parse EXPOSE directive
+ * @param {string} token - GitHub personal access token
+ * @param {string} repoUrl - Repository URL
+ * @param {string} dockerfilePath - Path to Dockerfile (e.g., "Dockerfile" or "backend/Dockerfile")
+ * @param {string} branch - Branch name (optional)
+ * @returns {Promise<{port: number|null, content: string|null}>}
+ */
+export async function getDockerfileExposedPort(token, repoUrl, dockerfilePath = 'Dockerfile', branch) {
+  const fileResult = await getFileContent(token, repoUrl, dockerfilePath, branch);
+
+  if (!fileResult) {
+    return { port: null, content: null };
+  }
+
+  const port = parseDockerfileExpose(fileResult.content);
+  return { port, content: fileResult.content };
+}
+
+/**
  * Get repository file tree (for finding Dockerfiles in various locations)
  * @param {string} token - GitHub personal access token
  * @param {string} repoUrl - Repository URL

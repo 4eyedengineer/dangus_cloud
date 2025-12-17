@@ -15,7 +15,7 @@ import {
   generateIngressManifest,
   generatePVCManifest,
 } from './manifestGenerator.js';
-import { parseGitHubUrl } from './github.js';
+import { parseGitHubUrl, getDockerfileExposedPort } from './github.js';
 import { updateDeploymentStatus } from '../routes/deployments.js';
 import { decrypt } from './encryption.js';
 
@@ -435,6 +435,53 @@ export async function getDecryptedEnvVars(db, serviceId) {
 }
 
 /**
+ * Detect exposed port from Dockerfile and check for mismatch
+ * @param {object} db - Database connection
+ * @param {object} service - Service object
+ * @param {string} githubToken - Decrypted GitHub token
+ * @returns {Promise<{detectedPort: number|null, hasMismatch: boolean}>}
+ */
+export async function detectDockerfilePort(db, service, githubToken) {
+  if (!service.repo_url || !githubToken) {
+    return { detectedPort: null, hasMismatch: false };
+  }
+
+  try {
+    // Build the full Dockerfile path considering build_context
+    let dockerfilePath = service.dockerfile_path || 'Dockerfile';
+    if (service.build_context) {
+      const context = service.build_context.replace(/^\.\//, '').replace(/\/$/, '');
+      dockerfilePath = `${context}/${dockerfilePath}`;
+    }
+
+    const { port: detectedPort } = await getDockerfileExposedPort(
+      githubToken,
+      service.repo_url,
+      dockerfilePath,
+      service.branch
+    );
+
+    const hasMismatch = detectedPort !== null && detectedPort !== service.port;
+
+    // Store detected port in service record for UI display
+    if (detectedPort !== null) {
+      await db.query(
+        'UPDATE services SET detected_port = $1 WHERE id = $2',
+        [detectedPort, service.id]
+      );
+    }
+
+    return { detectedPort, hasMismatch };
+  } catch (error) {
+    logger.warn('Failed to detect Dockerfile port', {
+      serviceId: service.id,
+      error: error.message
+    });
+    return { detectedPort: null, hasMismatch: false };
+  }
+}
+
+/**
  * Run the complete build and deploy pipeline for a service
  * Handles both repo-based builds and direct image deployments
  * @param {object} db - Database connection
@@ -463,6 +510,27 @@ export async function runBuildPipeline(db, service, deployment, commitSha, githu
     return { success: true, imageTag: service.image };
   }
 
+  // Detect port from Dockerfile before building
+  const { detectedPort, hasMismatch } = await detectDockerfilePort(db, service, githubToken);
+
+  // Log port detection results
+  if (detectedPort !== null) {
+    logger.info('Detected exposed port from Dockerfile', {
+      serviceId: service.id,
+      detectedPort,
+      configuredPort: service.port,
+      hasMismatch
+    });
+
+    if (hasMismatch) {
+      logger.warn('Port mismatch detected', {
+        serviceId: service.id,
+        dockerfilePort: detectedPort,
+        configuredPort: service.port
+      });
+    }
+  }
+
   // For repo-based services, run the full build pipeline
   const { jobName, imageTag, gitSecretName } = await triggerBuild(
     db,
@@ -481,8 +549,16 @@ export async function runBuildPipeline(db, service, deployment, commitSha, githu
     return { success: false, error: 'Build failed' };
   }
 
+  // Add port mismatch warning to build logs if detected
+  if (hasMismatch) {
+    const warningMsg = `\n\n=== PORT MISMATCH WARNING ===\nDockerfile exposes port ${detectedPort} but service is configured for port ${service.port}.\nThis may cause 502 errors. Use "Fix Port" to update the service configuration.`;
+    await updateDeploymentStatus(db, deployment.id, 'deploying', {
+      build_logs: (buildResult.logs || '') + warningMsg,
+    });
+  }
+
   // Deploy the service
   await deployService(db, service, deployment, buildResult.imageTag, namespace, userHash, envVars);
 
-  return { success: true, imageTag: buildResult.imageTag };
+  return { success: true, imageTag: buildResult.imageTag, detectedPort, hasMismatch };
 }

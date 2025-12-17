@@ -216,6 +216,55 @@ export async function getDeployment(namespace, name) {
   return k8sRequest('GET', `/apis/apps/v1/namespaces/${namespace}/deployments/${name}`);
 }
 
+export async function getService(namespace, name) {
+  return k8sRequest('GET', `/api/v1/namespaces/${namespace}/services/${name}`);
+}
+
+/**
+ * Patch a Kubernetes Service using strategic merge patch
+ * @param {string} namespace - Namespace
+ * @param {string} name - Service name
+ * @param {object} patch - Patch object
+ */
+export async function patchService(namespace, name, patch) {
+  return k8sRequest(
+    'PATCH',
+    `/api/v1/namespaces/${namespace}/services/${name}`,
+    patch,
+    'application/strategic-merge-patch+json'
+  );
+}
+
+/**
+ * Patch a Kubernetes Deployment using strategic merge patch
+ * @param {string} namespace - Namespace
+ * @param {string} name - Deployment name
+ * @param {object} patch - Patch object
+ */
+export async function patchDeployment(namespace, name, patch) {
+  return k8sRequest(
+    'PATCH',
+    `/apis/apps/v1/namespaces/${namespace}/deployments/${name}`,
+    patch,
+    'application/strategic-merge-patch+json'
+  );
+}
+
+/**
+ * Patch a Kubernetes Ingress using strategic merge patch
+ * @param {string} namespace - Namespace
+ * @param {string} name - Ingress name
+ * @param {object} patch - Patch object
+ */
+export async function patchIngress(namespace, name, patch) {
+  return k8sRequest(
+    'PATCH',
+    `/apis/networking.k8s.io/v1/namespaces/${namespace}/ingresses/${name}`,
+    patch,
+    'application/strategic-merge-patch+json'
+  );
+}
+
 export async function getPodMetrics(namespace, labelSelector) {
   const metricsPath = `/apis/metrics.k8s.io/v1beta1/namespaces/${namespace}/pods`;
   const metrics = await k8sRequest('GET', metricsPath);

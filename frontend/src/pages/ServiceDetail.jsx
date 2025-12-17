@@ -13,7 +13,7 @@ import { DomainManager } from '../components/DomainManager'
 import { LogViewer } from '../components/LogViewer'
 import { HealthStatus } from '../components/HealthStatus'
 import { CloneServiceModal } from '../components/CloneServiceModal'
-import { fetchService, triggerDeploy, fetchWebhookSecret, restartService, fetchServiceMetrics, validateDockerfile, fetchServiceHealth } from '../api/services'
+import { fetchService, triggerDeploy, fetchWebhookSecret, restartService, fetchServiceMetrics, validateDockerfile, fetchServiceHealth, fetchSuggestedPort, fixServicePort } from '../api/services'
 import { fetchEnvVars, createEnvVar, updateEnvVar, deleteEnvVar, revealEnvVar } from '../api/envVars'
 import { fetchDeployments } from '../api/deployments'
 import { ApiError } from '../api/utils'
@@ -59,6 +59,8 @@ export function ServiceDetail({ serviceId, onBack }) {
   const [validating, setValidating] = useState(false)
   const [validation, setValidation] = useState(null)
   const [validationCollapsed, setValidationCollapsed] = useState(true)
+
+  const [fixingPort, setFixingPort] = useState(false)
 
   const toast = useToast()
 
@@ -312,6 +314,22 @@ export function ServiceDetail({ serviceId, onBack }) {
     }
   }
 
+  const handleFixPort = async () => {
+    setFixingPort(true)
+    try {
+      const result = await fixServicePort(serviceId)
+      toast.success(`Port updated from ${result.previous_port} to ${result.new_port}`)
+      // Refresh service data to get updated port
+      const updatedService = await fetchService(serviceId)
+      setService(updatedService)
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'Failed to fix port'
+      toast.error(message)
+    } finally {
+      setFixingPort(false)
+    }
+  }
+
   const formatDate = (dateStr) => {
     const date = new Date(dateStr)
     return date.toISOString().replace('T', ' ').substring(0, 19)
@@ -498,6 +516,35 @@ export function ServiceDetail({ serviceId, onBack }) {
       </div>
 
       <AsciiDivider variant="double" color="green" />
+
+      {/* Port Mismatch Warning Banner */}
+      {service.port_mismatch && service.detected_port && (
+        <div className="border-2 border-terminal-yellow bg-terminal-yellow/10 p-4 mb-6">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-terminal-yellow font-mono text-lg">!</span>
+                <span className="font-mono text-sm text-terminal-yellow uppercase tracking-wide">
+                  Port Mismatch Detected
+                </span>
+              </div>
+              <p className="font-mono text-sm text-terminal-primary mb-2">
+                Dockerfile exposes port <span className="text-terminal-cyan">{service.detected_port}</span> but service is configured for port <span className="text-terminal-cyan">{service.port}</span>.
+              </p>
+              <p className="font-mono text-xs text-terminal-muted">
+                This may cause 502 Bad Gateway errors. Click "Fix Port" to update the service configuration without triggering a rebuild.
+              </p>
+            </div>
+            <TerminalButton
+              variant="primary"
+              onClick={handleFixPort}
+              disabled={fixingPort}
+            >
+              {fixingPort ? '[ FIXING... ]' : `[ FIX PORT -> ${service.detected_port} ]`}
+            </TerminalButton>
+          </div>
+        </div>
+      )}
 
       {/* Build Logs Section - shown when deployment is active or user has toggled it */}
       {(showBuildLogs || hasActiveDeployment()) && latestDeploymentId && (
