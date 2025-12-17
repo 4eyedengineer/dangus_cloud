@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { AsciiBox } from '../components/AsciiBox'
 import { AsciiDivider, AsciiSectionDivider } from '../components/AsciiDivider'
 import { StatusIndicator, ProgressGauge } from '../components/StatusIndicator'
@@ -8,6 +8,7 @@ import { useToast } from '../components/Toast'
 import { fetchProject } from '../api/projects'
 import { deleteService } from '../api/services'
 import { ApiError } from '../api/utils'
+import { useWebSocket } from '../hooks/useWebSocket'
 
 export function ProjectDetail({ projectId, onServiceClick, onNewService, onBack }) {
   const [project, setProject] = useState(null)
@@ -18,13 +19,71 @@ export function ProjectDetail({ projectId, onServiceClick, onNewService, onBack 
   const [copied, setCopied] = useState(null)
   const [showDeleteModal, setShowDeleteModal] = useState(null)
   const [deleting, setDeleting] = useState(false)
+  // Track real-time service statuses from WebSocket
+  const [serviceStatuses, setServiceStatuses] = useState({})
   const toast = useToast()
+  const { connectionState, subscribe, isConnected } = useWebSocket()
+  const unsubscribesRef = useRef([])
 
   useEffect(() => {
     if (projectId) {
       loadProject()
     }
   }, [projectId])
+
+  // Subscribe to deployment status updates for all services
+  useEffect(() => {
+    if (!project?.services?.length) return
+
+    // Clean up previous subscriptions
+    unsubscribesRef.current.forEach(unsub => unsub())
+    unsubscribesRef.current = []
+
+    // Subscribe to each service's latest deployment status
+    for (const service of project.services) {
+      if (service.latest_deployment_id) {
+        const channel = `deployment:${service.latest_deployment_id}:status`
+
+        const unsubscribe = subscribe(channel, (event) => {
+          const { payload } = event
+
+          // Update the service status in our local state
+          setServiceStatuses(prev => ({
+            ...prev,
+            [service.id]: payload.status
+          }))
+
+          // Show toast for significant status changes
+          if (payload.status === 'live') {
+            toast.success(`Service "${service.name}" is now live`)
+          } else if (payload.status === 'failed') {
+            toast.error(`Deployment failed for "${service.name}"`)
+          }
+        })
+
+        unsubscribesRef.current.push(unsubscribe)
+      }
+    }
+
+    return () => {
+      unsubscribesRef.current.forEach(unsub => unsub())
+      unsubscribesRef.current = []
+    }
+  }, [project?.services, subscribe, toast])
+
+  // Helper to get the current status (WebSocket status takes precedence)
+  const getRealtimeStatus = useCallback((service) => {
+    return serviceStatuses[service.id] || service.current_status
+  }, [serviceStatuses])
+
+  // Check if any service has an active deployment
+  const hasActiveDeployments = useCallback(() => {
+    if (!project?.services) return false
+    return project.services.some(service => {
+      const status = getRealtimeStatus(service)
+      return ['pending', 'building', 'deploying'].includes(status)
+    })
+  }, [project?.services, getRealtimeStatus])
 
   const loadProject = async () => {
     setLoading(true)
@@ -85,15 +144,17 @@ export function ProjectDetail({ projectId, onServiceClick, onNewService, onBack 
     return statusMap[status] || status?.toUpperCase() || 'UNKNOWN'
   }
 
-  const getServiceStatus = (service) => {
-    if (service.current_status) {
-      if (service.current_status === 'live') return 'online'
-      if (service.current_status === 'failed') return 'error'
-      if (service.current_status === 'building' || service.current_status === 'deploying') return 'pending'
-      return service.current_status
+  const getServiceStatus = useCallback((service) => {
+    // Use real-time status from WebSocket if available
+    const currentStatus = getRealtimeStatus(service)
+    if (currentStatus) {
+      if (currentStatus === 'live') return 'online'
+      if (currentStatus === 'failed') return 'error'
+      if (currentStatus === 'building' || currentStatus === 'deploying') return 'pending'
+      return currentStatus
     }
     return 'offline'
-  }
+  }, [getRealtimeStatus])
 
   if (loading) {
     return (
@@ -153,6 +214,12 @@ export function ProjectDetail({ projectId, onServiceClick, onNewService, onBack 
               status={project.services?.length > 0 ? 'online' : 'offline'}
               label={project.services?.length > 0 ? 'ACTIVE' : 'NO SERVICES'}
             />
+            {hasActiveDeployments() && (
+              <span className="font-mono text-xs text-terminal-cyan animate-pulse flex items-center gap-1">
+                <span className="inline-block w-2 h-2 bg-terminal-cyan rounded-full animate-ping" />
+                {isConnected() ? 'DEPLOYING (LIVE)' : 'DEPLOYING'}
+              </span>
+            )}
             <span className="font-mono text-xs text-terminal-muted">
               Created: {formatDate(project.created_at)}
             </span>
@@ -274,7 +341,7 @@ export function ProjectDetail({ projectId, onServiceClick, onNewService, onBack 
                           {service.branch || 'main'}
                         </div>
                         <div className="col-span-2 text-terminal-muted">
-                          {getStatusText(service.current_status || 'pending')}
+                          {getStatusText(getRealtimeStatus(service) || 'pending')}
                         </div>
                         <div className="col-span-2 flex gap-2">
                           <button
@@ -303,8 +370,16 @@ export function ProjectDetail({ projectId, onServiceClick, onNewService, onBack 
               </div>
 
               {/* Table Footer */}
-              <div className="font-mono text-xs text-terminal-muted border-t border-terminal-border pt-2 mt-2">
-                Total: {project.services.length} service(s)
+              <div className="font-mono text-xs text-terminal-muted border-t border-terminal-border pt-2 mt-2 flex justify-between items-center">
+                <span>Total: {project.services.length} service(s)</span>
+                {isConnected() ? (
+                  <span className="flex items-center gap-1 text-terminal-green">
+                    <span className="inline-block w-1.5 h-1.5 bg-terminal-green rounded-full" />
+                    Live updates
+                  </span>
+                ) : (
+                  <span className="text-terminal-muted">Refresh for updates</span>
+                )}
               </div>
             </>
           )}
