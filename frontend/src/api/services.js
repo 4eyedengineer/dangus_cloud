@@ -116,3 +116,25 @@ export async function cloneService(id, options) {
     body: JSON.stringify(options),
   });
 }
+
+/**
+ * Fetch suggested port from Dockerfile EXPOSE directive
+ * @param {string} id - Service ID
+ * @returns {Promise<{detected_port: number|null, configured_port: number, has_mismatch: boolean, dockerfile_path: string}>}
+ */
+export async function fetchSuggestedPort(id) {
+  return apiFetch(`/services/${id}/suggested-port`);
+}
+
+/**
+ * Fix port mismatch by updating service port to detected port
+ * @param {string} id - Service ID
+ * @param {number} port - Optional port to set (uses detected_port if not provided)
+ * @returns {Promise<{success: boolean, message: string, previous_port: number, new_port: number}>}
+ */
+export async function fixServicePort(id, port) {
+  return apiFetch(`/services/${id}/fix-port`, {
+    method: 'POST',
+    body: JSON.stringify(port ? { port } : {}),
+  });
+}
