@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { AsciiBox } from '../components/AsciiBox'
 import { AsciiDivider, AsciiSectionDivider } from '../components/AsciiDivider'
 import { StatusIndicator } from '../components/StatusIndicator'
@@ -11,17 +12,20 @@ import { ResourceMetrics } from '../components/ResourceMetrics'
 import { DomainManager } from '../components/DomainManager'
 import { LogViewer } from '../components/LogViewer'
 import { HealthStatus } from '../components/HealthStatus'
+import { CloneServiceModal } from '../components/CloneServiceModal'
 import { fetchService, triggerDeploy, fetchWebhookSecret, restartService, fetchServiceMetrics, validateDockerfile, fetchServiceHealth } from '../api/services'
 import { fetchEnvVars, createEnvVar, updateEnvVar, deleteEnvVar, revealEnvVar } from '../api/envVars'
 import { fetchDeployments } from '../api/deployments'
 import { ApiError } from '../api/utils'
 
 export function ServiceDetail({ serviceId, onBack }) {
+  const navigate = useNavigate()
   const [service, setService] = useState(null)
   const [envVars, setEnvVars] = useState([])
   const [deployments, setDeployments] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  const [showCloneModal, setShowCloneModal] = useState(false)
 
   const [configCollapsed, setConfigCollapsed] = useState(false)
   const [resourcesCollapsed, setResourcesCollapsed] = useState(false)
@@ -452,6 +456,12 @@ export function ServiceDetail({ serviceId, onBack }) {
               {validating ? '[ VALIDATING... ]' : '[ VALIDATE DOCKERFILE ]'}
             </TerminalButton>
           )}
+          <TerminalButton
+            variant="secondary"
+            onClick={() => setShowCloneModal(true)}
+          >
+            [ CLONE ]
+          </TerminalButton>
           <TerminalButton
             variant="primary"
             onClick={handleTriggerDeploy}
@@ -1136,6 +1146,19 @@ export function ServiceDetail({ serviceId, onBack }) {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Clone Service Modal */}
+      {showCloneModal && (
+        <CloneServiceModal
+          service={service}
+          onClose={() => setShowCloneModal(false)}
+          onCloned={(newService) => {
+            setShowCloneModal(false)
+            toast.success(`Service cloned successfully as "${newService.name}"`)
+            navigate(`/services/${newService.id}`)
+          }}
+        />
       )}
     </div>
   )

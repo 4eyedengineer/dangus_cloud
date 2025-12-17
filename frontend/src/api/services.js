@@ -99,3 +99,20 @@ export async function fetchServiceLogs(id, options = {}) {
 export async function fetchServiceHealth(id) {
   return apiFetch(`/services/${id}/health`);
 }
+
+/**
+ * Clone an existing service
+ * @param {string} id - Source service ID
+ * @param {object} options - Clone options
+ * @param {string} options.name - New service name
+ * @param {string} options.project_id - Target project ID (optional, defaults to same project)
+ * @param {boolean} options.include_env - Copy environment variables (default false)
+ * @param {boolean} options.auto_deploy - Deploy immediately after cloning (default false)
+ * @returns {Promise<{service: object, deployment: object|null, cloned_from: string, env_vars_copied: boolean}>}
+ */
+export async function cloneService(id, options) {
+  return apiFetch(`/services/${id}/clone`, {
+    method: 'POST',
+    body: JSON.stringify(options),
+  });
+}
