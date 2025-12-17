@@ -1657,6 +1657,188 @@ export default async function serviceRoutes(fastify, options) {
   });
 
   /**
+   * POST /services/:id/clone
+   * Clone an existing service with a new name
+   */
+  fastify.post('/services/:id/clone', {
+    schema: {
+      ...serviceParamsSchema,
+      body: {
+        type: 'object',
+        required: ['name'],
+        properties: {
+          name: { type: 'string' },
+          project_id: { type: 'string', format: 'uuid' },
+          include_env: { type: 'boolean', default: false },
+          auto_deploy: { type: 'boolean', default: false },
+        },
+      },
+    },
+  }, async (request, reply) => {
+    const userId = request.user.id;
+    const userHash = request.user.hash;
+    const sourceId = request.params.id;
+    const { name, project_id, include_env = false, auto_deploy = false } = request.body;
+
+    // Verify ownership of source service
+    const sourceCheck = await verifyServiceOwnership(sourceId, userId);
+    if (sourceCheck.error) {
+      return reply.code(sourceCheck.status).send({
+        error: sourceCheck.status === 404 ? 'Not Found' : 'Forbidden',
+        message: sourceCheck.error,
+      });
+    }
+
+    const sourceService = sourceCheck.service;
+
+    // Validate new service name
+    const validation = validateServiceName(name);
+    if (!validation.valid) {
+      return reply.code(400).send({
+        error: 'Bad Request',
+        message: validation.error,
+      });
+    }
+
+    const newServiceName = validation.name;
+
+    // Determine target project (default to same project)
+    const targetProjectId = project_id || sourceService.project_id;
+
+    // If cloning to different project, verify ownership
+    if (targetProjectId !== sourceService.project_id) {
+      const targetCheck = await verifyProjectOwnership(targetProjectId, userId);
+      if (targetCheck.error) {
+        return reply.code(targetCheck.status).send({
+          error: targetCheck.status === 404 ? 'Not Found' : 'Forbidden',
+          message: targetCheck.error,
+        });
+      }
+    }
+
+    try {
+      // Check if service name already exists in target project
+      const existing = await fastify.db.query(
+        'SELECT id FROM services WHERE project_id = $1 AND name = $2',
+        [targetProjectId, newServiceName]
+      );
+
+      if (existing.rows.length > 0) {
+        return reply.code(409).send({
+          error: 'Conflict',
+          message: 'Service name already exists in target project',
+        });
+      }
+
+      // Generate new webhook secret
+      const webhookSecret = generateWebhookSecret();
+
+      // Clone service
+      const result = await fastify.db.query(
+        `INSERT INTO services (
+          name, project_id, repo_url, image, branch, dockerfile_path,
+          build_context, port, replicas, storage_gb, health_check_path, webhook_secret
+        )
+        SELECT
+          $1, $2, repo_url, image, branch, dockerfile_path,
+          build_context, port, replicas, storage_gb, health_check_path, $3
+        FROM services WHERE id = $4
+        RETURNING *`,
+        [newServiceName, targetProjectId, webhookSecret, sourceId]
+      );
+
+      const newService = result.rows[0];
+
+      // Clone environment variables if requested
+      if (include_env) {
+        await fastify.db.query(
+          `INSERT INTO env_vars (service_id, key, value)
+           SELECT $1, key, value
+           FROM env_vars WHERE service_id = $2`,
+          [newService.id, sourceId]
+        );
+      }
+
+      const subdomain = computeSubdomain(userHash, newServiceName);
+      const webhookUrl = computeWebhookUrl(newService.id);
+
+      fastify.log.info(`Cloned service ${sourceService.name} (${sourceId}) to ${newServiceName} (${newService.id})`);
+
+      // Trigger deployment if requested
+      let deployment = null;
+      if (auto_deploy) {
+        // Create deployment record
+        const deployResult = await fastify.db.query(
+          `INSERT INTO deployments (service_id, commit_sha, status)
+           VALUES ($1, $2, 'pending')
+           RETURNING id, service_id, commit_sha, status, created_at`,
+          [newService.id, 'clone-deploy']
+        );
+        deployment = deployResult.rows[0];
+
+        // Get project name for namespace
+        const projectResult = await fastify.db.query(
+          'SELECT name FROM projects WHERE id = $1',
+          [targetProjectId]
+        );
+        const projectName = projectResult.rows[0].name;
+        const namespace = computeNamespace(userHash, projectName);
+
+        // Get GitHub token if needed for repo-based service
+        let githubToken = null;
+        let commitSha = null;
+        if (newService.repo_url) {
+          const userResult = await fastify.db.query(
+            'SELECT github_access_token FROM users WHERE id = $1',
+            [userId]
+          );
+          if (userResult.rows[0]?.github_access_token) {
+            githubToken = decrypt(userResult.rows[0].github_access_token);
+            const commit = await getLatestCommit(githubToken, newService.repo_url, newService.branch);
+            commitSha = commit.sha;
+            // Update deployment with actual commit sha
+            await fastify.db.query(
+              'UPDATE deployments SET commit_sha = $1 WHERE id = $2',
+              [commitSha, deployment.id]
+            );
+            deployment.commit_sha = commitSha;
+          }
+        }
+
+        // Trigger build pipeline asynchronously
+        runBuildPipeline(
+          fastify.db,
+          newService,
+          deployment,
+          commitSha || 'clone-deploy',
+          githubToken,
+          namespace,
+          userHash
+        ).catch(err => {
+          fastify.log.error(`Build pipeline failed for cloned service ${newService.id}: ${err.message}`);
+        });
+      }
+
+      return reply.code(201).send({
+        service: {
+          ...newService,
+          subdomain,
+          webhook_url: webhookUrl,
+        },
+        deployment,
+        cloned_from: sourceId,
+        env_vars_copied: include_env,
+      });
+    } catch (err) {
+      fastify.log.error(`Failed to clone service: ${err.message}`);
+      return reply.code(500).send({
+        error: 'Internal Server Error',
+        message: 'Failed to clone service',
+      });
+    }
+  });
+
+  /**
    * GET /services/:serviceId/env/:id/value
    * Reveal the decrypted value of a single environment variable
    */
