@@ -1,0 +1,70 @@
+# ARC Runner Set - Multi-repo configuration
+#
+# To install or upgrade:
+#   helm upgrade --install arc-runner-set-org \
+#     oci://ghcr.io/actions/actions-runner-controller-charts/gha-runner-scale-set \
+#     --namespace arc-runners \
+#     --values k8s/arc-runner/values.yaml \
+#     --set githubConfigSecret.github_token="YOUR_PAT_HERE"
+#
+# Required PAT scopes (Fine-grained):
+#   - Repository access: All repositories (or select specific repos)
+#   - Permissions:
+#     - Actions: Read and write
+#     - Administration: Read and write (for self-hosted runners)
+#     - Metadata: Read-only (automatically selected)
+#
+# Or Classic PAT scopes:
+#   - repo (Full control of private repositories)
+#   - admin:org (for org runners) OR admin:public_key (for user runners)
+
+# GitHub configuration - using user account URL for multi-repo access
+# This registers the runner at the user level, making it available to all repos
+githubConfigUrl: "https://github.com/4eyedengineer"
+
+# Runner scale set name - workflows use this in runs-on
+runnerScaleSetName: "arc-runner-set"
+
+# Container mode with Docker-in-Docker for building images
+containerMode:
+  type: "dind"
+
+# Runner pod template
+template:
+  spec:
+    containers:
+      - name: runner
+        image: ghcr.io/actions/actions-runner:latest
+        command: ["/home/runner/run.sh"]
+        resources:
+          requests:
+            cpu: "500m"
+            memory: "1Gi"
+          limits:
+            cpu: "2000m"
+            memory: "4Gi"
+      - name: dind
+        image: docker:dind
+        securityContext:
+          privileged: true
+        resources:
+          requests:
+            cpu: "500m"
+            memory: "1Gi"
+          limits:
+            cpu: "2000m"
+            memory: "4Gi"
+        volumeMounts:
+          - name: work
+            mountPath: /home/runner/_work
+    volumes:
+      - name: work
+        emptyDir: {}
+
+# Image pull secrets for Harbor registry
+imagePullSecrets:
+  - name: harbor-creds
+
+# Scaling configuration
+minRunners: 0
+maxRunners: 5
