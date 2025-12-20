@@ -1,0 +1,12 @@
+authorityKeyIdentifier=keyid,issuer
+basicConstraints=CA:FALSE
+keyUsage = digitalSignature, keyEncipherment
+extendedKeyUsage = serverAuth
+subjectAltName = @alt_names
+
+[alt_names]
+DNS.1 = harbor.192.168.1.124.nip.io
+DNS.2 = *.192.168.1.124.nip.io
+DNS.3 = harbor
+DNS.4 = harbor.harbor.svc.cluster.local
+IP.1 = 192.168.1.124
