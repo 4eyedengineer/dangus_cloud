@@ -135,16 +135,23 @@ export function ProgressGauge({
   const filledBlocks = Math.round((percentage / 100) * width)
   const emptyBlocks = width - filledBlocks
 
+  // v2 threshold-based color selection
   const getColor = () => {
     if (variant !== 'default') return variant
-    if (percentage >= 90) return 'red'
-    if (percentage >= 70) return 'amber'
-    return 'green'
+    if (percentage >= 85) return 'critical'
+    if (percentage >= 70) return 'caution'
+    if (percentage >= 50) return 'warning'
+    return 'healthy'
   }
 
   const color = getColor()
 
   const colorClasses = {
+    healthy: 'text-status-healthy',
+    warning: 'text-status-warning',
+    caution: 'text-status-caution',
+    critical: 'text-status-critical',
+    // Legacy color support
     green: 'text-terminal-primary',
     amber: 'text-terminal-secondary',
     red: 'text-terminal-red',

@@ -197,7 +197,22 @@ export function ServiceDetail({ serviceId, onBack }) {
 
   const handleCopy = async (text, key) => {
     try {
-      await navigator.clipboard.writeText(text)
+      // Try modern clipboard API first
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(text)
+      } else {
+        // Fallback for HTTP contexts - use textarea + execCommand
+        const textArea = document.createElement('textarea')
+        textArea.value = text
+        textArea.style.position = 'fixed'
+        textArea.style.left = '-999999px'
+        textArea.style.top = '-999999px'
+        document.body.appendChild(textArea)
+        textArea.focus()
+        textArea.select()
+        document.execCommand('copy')
+        textArea.remove()
+      }
       setCopied(key)
       setTimeout(() => setCopied(null), 2000)
       toast.success('Copied to clipboard')
@@ -765,10 +780,12 @@ export function ServiceDetail({ serviceId, onBack }) {
 
       {/* Configuration Section */}
       <AsciiSectionDivider
-        title="CONFIGURATION"
+        title="Configuration"
         collapsed={configCollapsed}
         onToggle={() => setConfigCollapsed(!configCollapsed)}
         color="cyan"
+        commandFlags={['--show-config', '--format=table']}
+        showLeftBorder={true}
       />
 
       {!configCollapsed && (
@@ -812,10 +829,12 @@ export function ServiceDetail({ serviceId, onBack }) {
 
       {/* Resource Usage Section */}
       <AsciiSectionDivider
-        title="RESOURCE USAGE"
+        title="Resource Usage"
         collapsed={resourcesCollapsed}
         onToggle={() => setResourcesCollapsed(!resourcesCollapsed)}
         color="cyan"
+        commandFlags={['--show-metrics', '--refresh=5s']}
+        showLeftBorder={true}
       />
 
       {!resourcesCollapsed && (
@@ -869,10 +888,12 @@ export function ServiceDetail({ serviceId, onBack }) {
 
       {/* Environment Variables Section */}
       <AsciiSectionDivider
-        title="ENVIRONMENT VARIABLES"
+        title="Environment Variables"
         collapsed={envCollapsed}
         onToggle={() => setEnvCollapsed(!envCollapsed)}
         color="amber"
+        commandFlags={['--show-env', '--masked']}
+        showLeftBorder={true}
       />
 
       {!envCollapsed && (

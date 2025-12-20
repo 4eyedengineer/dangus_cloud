@@ -9,11 +9,44 @@ const FULL_LOGO = `██████╗  █████╗ ███╗   █�
 
 const COMPACT_LOGO = `DANGUS`
 
+// Heat gradient colors (red → orange → yellow → green)
+const HEAT_COLORS = [
+  '#ff3333', // red
+  '#ff6633', // red-orange
+  '#ff9933', // orange
+  '#ffcc33', // yellow
+  '#33ff33', // green
+]
+
+// Get gradient color based on horizontal position
+const getHeatColor = (charIndex, totalWidth) => {
+  const ratio = charIndex / totalWidth
+  const colorIndex = Math.min(Math.floor(ratio * HEAT_COLORS.length), HEAT_COLORS.length - 1)
+  return HEAT_COLORS[colorIndex]
+}
+
+// Render a line with heat gradient coloring
+function HeatGradientLine({ line, maxWidth }) {
+  return (
+    <span>
+      {line.split('').map((char, index) => (
+        <span
+          key={index}
+          style={{ color: char !== ' ' ? getHeatColor(index, maxWidth) : 'transparent' }}
+        >
+          {char}
+        </span>
+      ))}
+    </span>
+  )
+}
+
 export function AsciiLogo({
   variant = 'full',
   showCloud = true,
   showBorder = true,
   glowColor = 'green',
+  useHeatGradient = true,
   className = ''
 }) {
   const [isMobile, setIsMobile] = useState(false)
@@ -52,6 +85,27 @@ export function AsciiLogo({
   const cloudText = 'C L O U D'
   const cloudPadding = Math.floor((maxLineLength - cloudText.length) / 2)
 
+  // Render logo content with optional heat gradient
+  const renderLogoContent = (line, index) => {
+    if (useHeatGradient && displayVariant === 'full') {
+      return <HeatGradientLine key={index} line={line.padEnd(maxLineLength)} maxWidth={maxLineLength} />
+    }
+    return <span className={glowClasses[glowColor]}>{line.padEnd(maxLineLength)}</span>
+  }
+
+  // Render cloud text with heat gradient
+  const renderCloudContent = () => {
+    const paddedCloud = ' '.repeat(cloudPadding) + cloudText + ' '.repeat(maxLineLength - cloudPadding - cloudText.length)
+    if (useHeatGradient && displayVariant === 'full') {
+      return <HeatGradientLine line={paddedCloud} maxWidth={maxLineLength} />
+    }
+    return (
+      <span className={`${glowClasses[glowColor]} tracking-[0.5em]`}>
+        {paddedCloud}
+      </span>
+    )
+  }
+
   const renderBorderedLogo = () => {
     const borderWidth = maxLineLength + 4
     const topBorder = '┌' + '─'.repeat(borderWidth) + '┐'
@@ -65,16 +119,14 @@ export function AsciiLogo({
         {logoLines.map((line, index) => (
           <div key={index} aria-hidden="true">
             <span className={borderGlowClasses[glowColor]}>│  </span>
-            <span className={glowClasses[glowColor]}>{line.padEnd(maxLineLength)}</span>
+            {renderLogoContent(line, index)}
             <span className={borderGlowClasses[glowColor]}>  │</span>
           </div>
         ))}
         {showCloud && displayVariant === 'full' && (
           <div aria-hidden="true">
             <span className={borderGlowClasses[glowColor]}>│  </span>
-            <span className={`${glowClasses[glowColor]} tracking-[0.5em]`}>
-              {' '.repeat(cloudPadding)}{cloudText}{' '.repeat(maxLineLength - cloudPadding - cloudText.length)}
-            </span>
+            {renderCloudContent()}
             <span className={borderGlowClasses[glowColor]}>  │</span>
           </div>
         )}
@@ -87,12 +139,16 @@ export function AsciiLogo({
 
   const renderSimpleLogo = () => (
     <div className={`font-mono whitespace-pre leading-none ${className}`} aria-hidden="true">
-      <div className={glowClasses[glowColor]}>
-        {logo}
+      <div>
+        {logoLines.map((line, index) => (
+          <div key={index}>
+            {renderLogoContent(line, index)}
+          </div>
+        ))}
       </div>
       {showCloud && displayVariant === 'full' && (
-        <div className={`${glowClasses[glowColor]} tracking-[0.5em] mt-1`}>
-          {' '.repeat(cloudPadding)}{cloudText}
+        <div className="mt-1">
+          {renderCloudContent()}
         </div>
       )}
     </div>

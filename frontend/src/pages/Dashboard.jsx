@@ -127,10 +127,12 @@ export function Dashboard({ onProjectClick, onNewProject }) {
 
       {/* Projects Section */}
       <AsciiSectionDivider
-        title="ACTIVE PROJECTS"
+        title="Active Projects"
         collapsed={viewCollapsed}
         onToggle={() => setViewCollapsed(!viewCollapsed)}
         color="amber"
+        commandFlags={['--show-projects', '--view=grid']}
+        showLeftBorder={true}
       />
 
       {!viewCollapsed && (
@@ -164,7 +166,7 @@ export function Dashboard({ onProjectClick, onNewProject }) {
       <AsciiDivider variant="single" color="muted" className="my-6" />
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <AsciiBox title="Total Services" variant="green">
+        <AsciiBox title="Total Services.." variant="green">
           <div className="text-center">
             <span className="font-mono text-3xl text-terminal-primary text-glow-green">
               {projects.reduce((acc, p) => acc + (p.service_count || 0), 0)}
@@ -173,7 +175,7 @@ export function Dashboard({ onProjectClick, onNewProject }) {
           </div>
         </AsciiBox>
 
-        <AsciiBox title="Total Projects" variant="amber">
+        <AsciiBox title="Total Projects.." variant="amber">
           <div className="text-center">
             <span className="font-mono text-3xl text-terminal-secondary text-glow-amber">
               {projects.length}
@@ -182,14 +184,6 @@ export function Dashboard({ onProjectClick, onNewProject }) {
           </div>
         </AsciiBox>
 
-        <AsciiBox title="System Health" variant="green">
-          <div className="text-center">
-            <span className="font-mono text-3xl text-terminal-primary text-glow-green">
-              OK
-            </span>
-            <p className="font-mono text-xs text-terminal-muted mt-1">ALL SYSTEMS OPERATIONAL</p>
-          </div>
-        </AsciiBox>
       </div>
 
       {/* Delete Confirmation Modal */}

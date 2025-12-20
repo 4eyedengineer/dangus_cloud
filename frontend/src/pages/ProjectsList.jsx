@@ -7,7 +7,7 @@ import TerminalInput from '../components/TerminalInput'
 import TerminalSelect from '../components/TerminalSelect'
 import TerminalSpinner from '../components/TerminalSpinner'
 import { useToast } from '../components/Toast'
-import { fetchProjects, createProject, deleteProject } from '../api/projects'
+import { fetchProjects, deleteProject } from '../api/projects'
 import { ApiError } from '../api/utils'
 
 const FILTER_OPTIONS = [
@@ -26,7 +26,7 @@ const SORT_OPTIONS = [
   { value: 'services_asc', label: 'Least Services' }
 ]
 
-export function ProjectsList({ onProjectClick }) {
+export function ProjectsList({ onProjectClick, onNewProject }) {
   const [projects, setProjects] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -34,11 +34,8 @@ export function ProjectsList({ onProjectClick }) {
   const [filter, setFilter] = useState('all')
   const [sortBy, setSortBy] = useState('created_desc')
   const [selectedProjects, setSelectedProjects] = useState(new Set())
-  const [showNewProjectModal, setShowNewProjectModal] = useState(false)
   const [showDeleteModal, setShowDeleteModal] = useState(null)
   const [showBulkDeleteModal, setShowBulkDeleteModal] = useState(false)
-  const [newProjectName, setNewProjectName] = useState('')
-  const [creating, setCreating] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const toast = useToast()
 
@@ -115,25 +112,6 @@ export function ProjectsList({ onProjectClick }) {
 
     return result
   }, [projects, searchQuery, filter, sortBy])
-
-  const handleCreateProject = async (e) => {
-    e.preventDefault()
-    if (!newProjectName.trim()) return
-
-    setCreating(true)
-    try {
-      const project = await createProject(newProjectName.trim())
-      setProjects(prev => [project, ...prev])
-      setNewProjectName('')
-      setShowNewProjectModal(false)
-      toast.success(`Project "${project.name}" created successfully`)
-    } catch (err) {
-      const message = err instanceof ApiError ? err.message : 'Failed to create project'
-      toast.error(message)
-    } finally {
-      setCreating(false)
-    }
-  }
 
   const handleDeleteProject = async (project) => {
     setDeleting(true)
@@ -254,7 +232,7 @@ export function ProjectsList({ onProjectClick }) {
           </p>
         </div>
 
-        <TerminalButton variant="primary" onClick={() => setShowNewProjectModal(true)}>
+        <TerminalButton variant="primary" onClick={onNewProject}>
           [ NEW PROJECT ]
         </TerminalButton>
       </div>
@@ -337,7 +315,7 @@ export function ProjectsList({ onProjectClick }) {
                 : 'No projects yet.'}
             </p>
             {!searchQuery && filter === 'all' && (
-              <TerminalButton variant="primary" onClick={() => setShowNewProjectModal(true)}>
+              <TerminalButton variant="primary" onClick={onNewProject}>
                 [ CREATE YOUR FIRST PROJECT ]
               </TerminalButton>
             )}
@@ -410,57 +388,6 @@ export function ProjectsList({ onProjectClick }) {
           </div>
         </AsciiBox>
       </div>
-
-      {/* New Project Modal */}
-      {showNewProjectModal && (
-        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
-          <div className="w-full max-w-md mx-4">
-            <div className="font-mono whitespace-pre text-terminal-muted select-none">
-              +-- NEW PROJECT ----------------------------+
-            </div>
-            <div className="border-l border-r border-terminal-muted bg-terminal-bg-secondary px-6 py-6">
-              <form onSubmit={handleCreateProject}>
-                <label className="block font-mono text-xs text-terminal-muted uppercase mb-2">
-                  Project Name
-                </label>
-                <TerminalInput
-                  value={newProjectName}
-                  onChange={(e) => setNewProjectName(e.target.value)}
-                  placeholder="my-project"
-                  className="w-full mb-4"
-                  autoFocus
-                />
-                <p className="font-mono text-xs text-terminal-muted mb-6">
-                  Use lowercase letters, numbers, and hyphens only.
-                </p>
-                <div className="flex justify-end gap-3">
-                  <TerminalButton
-                    type="button"
-                    variant="secondary"
-                    onClick={() => {
-                      setShowNewProjectModal(false)
-                      setNewProjectName('')
-                    }}
-                    disabled={creating}
-                  >
-                    [ CANCEL ]
-                  </TerminalButton>
-                  <TerminalButton
-                    type="submit"
-                    variant="primary"
-                    disabled={creating || !newProjectName.trim()}
-                  >
-                    {creating ? '[ CREATING... ]' : '[ CREATE ]'}
-                  </TerminalButton>
-                </div>
-              </form>
-            </div>
-            <div className="font-mono whitespace-pre text-terminal-muted select-none">
-              +--------------------------------------------+
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Delete Confirmation Modal */}
       {showDeleteModal && (

@@ -9,7 +9,7 @@ import TerminalInput from '../components/TerminalInput'
 import TerminalSpinner from '../components/TerminalSpinner'
 import { useToast } from '../components/Toast'
 import { createProject } from '../api/projects'
-import { createServicesBatch } from '../api/services'
+import { createServicesBatch, triggerDeploy } from '../api/services'
 import { analyzeRepo } from '../api/github'
 
 const STEPS = {
@@ -197,6 +197,22 @@ export function NewProjectWizard({ onComplete, onCancel }) {
 
       if (result.errors?.length > 0) {
         toast.warning(`${result.errors.length} service(s) failed to create`)
+      }
+
+      // Auto-deploy all created services
+      if (result.created?.length > 0) {
+        toast.info('Starting deployments...')
+        const deployPromises = result.created.map(service =>
+          triggerDeploy(service.id).catch(err => {
+            console.error(`Failed to deploy ${service.name}:`, err)
+            return null
+          })
+        )
+        const deployResults = await Promise.all(deployPromises)
+        const successfulDeploys = deployResults.filter(Boolean).length
+        if (successfulDeploys > 0) {
+          toast.success(`Triggered ${successfulDeploys} deployment(s)`)
+        }
       }
 
       onComplete(project)

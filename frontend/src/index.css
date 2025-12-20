@@ -6,21 +6,42 @@
    CSS Custom Properties - Terminal Design System
    ======================================== */
 :root {
-  /* Colors - Background */
-  --color-bg-primary: #0a0a0a;
-  --color-bg-secondary: #121212;
-  --color-bg-elevated: #151515;
+  /* Colors - Background (v2 spec) */
+  --color-bg-primary: #0d0d0d;
+  --color-bg-secondary: #1a1a1a;
+  --color-bg-elevated: #252525;
 
-  /* Colors - Text */
+  /* Colors - Text Hierarchy (brightness-based) */
   --color-text-primary: #33ff33;
   --color-text-secondary: #ffaa00;
-  --color-text-muted: #666666;
+  --color-text-muted: #888888;
+  --color-text-ghost: #444444;
 
   /* Colors - Accents */
   --color-accent-green: #33ff33;
   --color-accent-amber: #ffaa00;
   --color-accent-red: #ff3333;
   --color-accent-cyan: #00ffff;
+
+  /* Colors - Chart Spectrum (v2) */
+  --color-chart-cyan: #00ffcc;
+  --color-chart-magenta: #ff66ff;
+  --color-chart-purple: #9966ff;
+  --color-chart-orange: #ff9933;
+  --color-chart-blue: #3399ff;
+
+  /* Colors - Status Thresholds (v2 gradient) */
+  --color-status-healthy: #33ff33;
+  --color-status-warning: #aaff33;
+  --color-status-caution: #ffaa33;
+  --color-status-critical: #ff3333;
+
+  /* Colors - Heat Gradient (logo) */
+  --color-heat-1: #ff3333;
+  --color-heat-2: #ff6633;
+  --color-heat-3: #ff9933;
+  --color-heat-4: #ffcc33;
+  --color-heat-5: #33ff33;
 
   /* Colors - Borders */
   --color-border: #333333;
@@ -179,12 +200,54 @@ body {
     color: var(--color-text-muted);
   }
 
+  .text-terminal-ghost {
+    color: var(--color-text-ghost);
+  }
+
   .text-terminal-red {
     color: var(--color-accent-red);
   }
 
   .text-terminal-cyan {
     color: var(--color-accent-cyan);
+  }
+
+  /* Chart colors */
+  .text-chart-cyan {
+    color: var(--color-chart-cyan);
+  }
+
+  .text-chart-magenta {
+    color: var(--color-chart-magenta);
+  }
+
+  .text-chart-purple {
+    color: var(--color-chart-purple);
+  }
+
+  .text-chart-orange {
+    color: var(--color-chart-orange);
+  }
+
+  .text-chart-blue {
+    color: var(--color-chart-blue);
+  }
+
+  /* Status threshold colors */
+  .text-status-healthy {
+    color: var(--color-status-healthy);
+  }
+
+  .text-status-warning {
+    color: var(--color-status-warning);
+  }
+
+  .text-status-caution {
+    color: var(--color-status-caution);
+  }
+
+  .text-status-critical {
+    color: var(--color-status-critical);
   }
 }
 

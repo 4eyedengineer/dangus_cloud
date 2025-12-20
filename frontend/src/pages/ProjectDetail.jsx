@@ -25,6 +25,15 @@ export function ProjectDetail({ projectId, onServiceClick, onNewService, onBack 
   const { connectionState, subscribe, isConnected } = useWebSocket()
   const unsubscribesRef = useRef([])
 
+  // Check if any service has an active deployment
+  const hasActiveDeployments = () => {
+    if (!project?.services?.length) return false
+    return project.services.some(s =>
+      ['pending', 'building', 'deploying'].includes(s.current_status)
+    )
+  }
+
+  // Initial load
   useEffect(() => {
     if (projectId) {
       loadProject()
@@ -88,6 +97,7 @@ export function ProjectDetail({ projectId, onServiceClick, onNewService, onBack 
   const loadProject = async () => {
     setLoading(true)
     setError(null)
+    setProject(null) // Clear stale data when loading new project
     try {
       const data = await fetchProject(projectId)
       setProject(data)
@@ -117,9 +127,25 @@ export function ProjectDetail({ projectId, onServiceClick, onNewService, onBack 
 
   const handleCopy = async (text, key) => {
     try {
-      await navigator.clipboard.writeText(text)
+      // Try modern clipboard API first
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(text)
+      } else {
+        // Fallback for HTTP contexts
+        const textArea = document.createElement('textarea')
+        textArea.value = text
+        textArea.style.position = 'fixed'
+        textArea.style.left = '-999999px'
+        textArea.style.top = '-999999px'
+        document.body.appendChild(textArea)
+        textArea.focus()
+        textArea.select()
+        document.execCommand('copy')
+        textArea.remove()
+      }
       setCopied(key)
       setTimeout(() => setCopied(null), 2000)
+      toast.success('Copied to clipboard')
     } catch (err) {
       toast.error('Failed to copy to clipboard')
     }
@@ -234,6 +260,40 @@ export function ProjectDetail({ projectId, onServiceClick, onNewService, onBack 
       </div>
 
       <AsciiDivider variant="double" color="green" />
+
+      {/* Live Service URLs - Prominent Display */}
+      {project.services?.some(s => s.url && s.current_status === 'live') && (
+        <AsciiBox title="Live URLs" variant="green" className="border-terminal-green/50 bg-terminal-bg-secondary">
+          <div className="space-y-3">
+            {project.services
+              .filter(s => s.url && s.current_status === 'live')
+              .map((service) => (
+                <div key={service.id} className="flex items-center justify-between gap-4">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <StatusIndicator status="online" showLabel={false} size="sm" />
+                    <span className="font-mono text-xs text-terminal-muted uppercase w-20 flex-shrink-0">
+                      {service.name}:
+                    </span>
+                    <a
+                      href={service.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="font-mono text-sm text-terminal-green hover:text-terminal-green/80 underline truncate"
+                    >
+                      {service.url}
+                    </a>
+                  </div>
+                  <button
+                    onClick={() => handleCopy(service.url, `url-${service.id}`)}
+                    className="font-mono text-xs text-terminal-secondary hover:text-terminal-primary transition-colors flex-shrink-0"
+                  >
+                    {copied === `url-${service.id}` ? '[COPIED]' : '[COPY]'}
+                  </button>
+                </div>
+              ))}
+          </div>
+        </AsciiBox>
+      )}
 
       {/* Service Discovery Panel */}
       <AsciiSectionDivider

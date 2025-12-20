@@ -1,70 +1,52 @@
 import { useState, useEffect, useRef } from 'react'
 import TerminalSpinner from './TerminalSpinner'
 import { AsciiBox } from './AsciiBox'
+import { SegmentedGauge } from './SegmentedGauge'
 import { useWebSocket } from '../hooks/useWebSocket'
 
-function MetricGauge({ label, value, max, unit, showRaw = true }) {
+// v2 threshold colors
+const getStatusColor = (percent) => {
+  if (percent <= 50) return '#33ff33'  // healthy
+  if (percent <= 70) return '#aaff33'  // warning
+  if (percent <= 85) return '#ffaa33'  // caution
+  return '#ff3333'                      // critical
+}
+
+// Format display values
+const formatValue = (val, unit) => {
+  if (unit === 'm') return `${Math.round(val)}${unit}`
+  if (unit === 'Mi') return `${Math.round(val)}${unit}`
+  return `${val}${unit}`
+}
+
+function MetricGaugeArc({ label, value, max, unit }) {
   const percent = max ? Math.min(Math.round((value / max) * 100), 100) : 0
   const hasLimit = max !== null && max !== undefined
 
-  // Color based on usage percentage
-  const getColor = (pct) => {
-    if (pct > 80) return 'red'
-    if (pct > 60) return 'amber'
-    return 'green'
-  }
-
-  const color = hasLimit ? getColor(percent) : 'cyan'
-
-  const colorClasses = {
-    green: 'bg-terminal-primary',
-    amber: 'bg-terminal-secondary',
-    red: 'bg-terminal-red',
-    cyan: 'bg-terminal-cyan'
-  }
-
-  const textColorClasses = {
-    green: 'text-terminal-primary',
-    amber: 'text-terminal-secondary',
-    red: 'text-terminal-red',
-    cyan: 'text-terminal-cyan'
-  }
-
-  // Format display values
-  const formatValue = (val, u) => {
-    if (u === 'm') return `${Math.round(val)}${u}`
-    if (u === 'Mi') return `${Math.round(val)}${u}`
-    return `${val}${u}`
+  if (!hasLimit) {
+    return (
+      <div className="flex flex-col items-center font-mono">
+        <div className="text-xs text-terminal-muted uppercase mb-2">{label}</div>
+        <div className="text-terminal-cyan text-lg">
+          {formatValue(value, unit)}
+        </div>
+        <div className="text-xs text-terminal-muted mt-1">No limit set</div>
+      </div>
+    )
   }
 
   return (
-    <div className="font-mono">
-      <div className="text-xs text-terminal-muted uppercase mb-1">{label}</div>
-      <div className={`text-lg ${textColorClasses[color]}`}>
-        {showRaw && (
-          <>
-            {formatValue(value, unit)}
-            {hasLimit && <span className="text-terminal-muted"> / {formatValue(max, unit)}</span>}
-          </>
-        )}
-        {hasLimit && (
-          <span className="text-sm text-terminal-muted ml-2">({percent}%)</span>
-        )}
-        {!hasLimit && !showRaw && (
-          <span className="text-terminal-muted text-sm">No limit set</span>
-        )}
+    <div className="flex flex-col items-center">
+      <SegmentedGauge
+        value={value}
+        max={max}
+        title={label}
+        size={120}
+        unit="%"
+      />
+      <div className="text-xs text-terminal-muted mt-2 font-mono">
+        {formatValue(value, unit)} / {formatValue(max, unit)}
       </div>
-      <div className="h-2 bg-terminal-bg-secondary mt-2 border border-terminal-border">
-        <div
-          className={`h-full ${colorClasses[color]} transition-all duration-300`}
-          style={{ width: hasLimit ? `${percent}%` : '0%' }}
-        />
-      </div>
-      {!hasLimit && (
-        <div className="text-xs text-terminal-muted mt-1">
-          {formatValue(value, unit)} (no limit)
-        </div>
-      )}
     </div>
   )
 }
@@ -73,11 +55,13 @@ function PodMetricRow({ pod, isLast }) {
   const cpuPercent = pod.cpu.percentUsed
   const memPercent = pod.memory.percentUsed
 
-  const getStatusColor = (pct) => {
+  // v2 threshold-based color classes
+  const getStatusColorClass = (pct) => {
     if (pct === null) return 'text-terminal-muted'
-    if (pct > 80) return 'text-terminal-red'
-    if (pct > 60) return 'text-terminal-secondary'
-    return 'text-terminal-primary'
+    if (pct <= 50) return 'text-status-healthy'
+    if (pct <= 70) return 'text-status-warning'
+    if (pct <= 85) return 'text-status-caution'
+    return 'text-status-critical'
   }
 
   return (
@@ -87,11 +71,11 @@ function PodMetricRow({ pod, isLast }) {
         <span className="text-terminal-cyan truncate max-w-[200px]">{pod.name}</span>
       </div>
       <div className="flex gap-6 mt-1 text-xs">
-        <span className={getStatusColor(cpuPercent)}>
+        <span className={getStatusColorClass(cpuPercent)}>
           CPU: {pod.cpu.usage}
           {cpuPercent !== null && ` (${cpuPercent}%)`}
         </span>
-        <span className={getStatusColor(memPercent)}>
+        <span className={getStatusColorClass(memPercent)}>
           MEM: {pod.memory.usage}
           {memPercent !== null && ` (${memPercent}%)`}
         </span>
@@ -230,15 +214,15 @@ export function ResourceMetrics({ serviceId, fetchMetrics, refreshInterval = 500
     : null
 
   return (
-    <AsciiBox title="Resource Usage" variant="cyan">
-      <div className="grid grid-cols-2 gap-6 mb-4">
-        <MetricGauge
+    <AsciiBox title="Resource Usage.." variant="cyan">
+      <div className="grid grid-cols-2 gap-4 mb-4">
+        <MetricGaugeArc
           label="CPU"
           value={metrics.aggregated.totalCpuMillicores}
           max={metrics.limits?.cpuMillicores}
           unit="m"
         />
-        <MetricGauge
+        <MetricGaugeArc
           label="Memory"
           value={memoryMi}
           max={memoryLimitMi}

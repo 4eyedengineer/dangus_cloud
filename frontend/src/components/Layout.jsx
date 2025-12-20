@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { AsciiLogo } from './AsciiLogo'
-import { StatusIndicator } from './StatusIndicator'
 import { AsciiDivider } from './AsciiDivider'
+import { DigitalDebrisFill } from './DigitalDebris'
 import { useWebSocket } from '../hooks/useWebSocket'
 
 export function Layout({
@@ -9,7 +9,6 @@ export function Layout({
   breadcrumbs = [],
   showSidebar = true,
   sidebarContent = null,
-  systemStatus = 'online',
   navItems = [
     { label: 'Dashboard', href: '/', active: true },
     { label: 'Projects', href: '/projects' },
@@ -87,32 +86,29 @@ export function Layout({
     return date.toISOString().replace('T', ' ').substring(0, 19)
   }
 
-  const systemStatusText = {
-    online: 'OPERATIONAL',
-    offline: 'OFFLINE',
-    error: 'ERROR',
-    warning: 'DEGRADED',
-    loading: 'INITIALIZING'
-  }
 
   return (
     <div className={`min-h-screen bg-terminal-primary flex flex-col terminal-grid-bg ${className}`}>
       {/* Header */}
       <header className="border-b border-terminal-border">
         {/* Top bar with logo and system status */}
-        <div className="flex items-start justify-between px-4 py-3 md:px-6 md:py-4">
+        <div className="flex items-start justify-between px-4 py-3 md:px-6 md:py-4 relative">
+          {/* Digital debris effect */}
+          {!isMobile && <DigitalDebrisFill density="sparse" seed={42} />}
+
           {/* ASCII Logo */}
-          <div className="flex-shrink-0">
+          <div className="flex-shrink-0 relative z-10">
             <AsciiLogo
               variant="full"
               showBorder={!isMobile}
               showCloud={!isMobile}
               glowColor="green"
+              useHeatGradient={!isMobile}
             />
           </div>
 
           {/* System Status */}
-          <div className="flex flex-col items-end gap-1">
+          <div className="flex flex-col items-end gap-1 relative z-10">
             {userName && (
               <div className="flex items-center gap-2 text-sm font-mono mb-1">
                 <span className="text-terminal-muted uppercase tracking-terminal-wide">
@@ -123,16 +119,6 @@ export function Layout({
                 </span>
               </div>
             )}
-            <div className="flex items-center gap-2 text-sm font-mono">
-              <span className="text-terminal-muted uppercase tracking-terminal-wide">
-                SYSTEM:
-              </span>
-              <StatusIndicator
-                status={systemStatus}
-                label={systemStatusText[systemStatus] || 'UNKNOWN'}
-                size="sm"
-              />
-            </div>
             {!isMobile && (
               <div className="text-terminal-muted text-xs font-mono">
                 {formatTimestamp(currentTime)}
@@ -161,11 +147,11 @@ export function Layout({
                   `}
                   aria-current={item.active ? 'page' : undefined}
                 >
-                  [ {item.label} ]
+                  {item.label}
                 </button>
                 {index < navItems.length - 1 && (
-                  <span className="text-terminal-muted mx-1" aria-hidden="true">
-                    -
+                  <span className="text-terminal-muted mx-2" aria-hidden="true">
+                    –
                   </span>
                 )}
               </span>
@@ -273,18 +259,9 @@ export function Layout({
       <footer className="border-t border-terminal-border px-4 py-2 md:px-6">
         <div className="flex items-center justify-between font-mono text-xs md:text-sm">
           <div className="flex items-center gap-3">
-            <span className="text-terminal-muted uppercase tracking-terminal-wide">
-              STATUS:
-            </span>
-            <StatusIndicator
-              status={systemStatus}
-              label="CONNECTED"
-              size="sm"
-            />
-            <span aria-hidden="true" className="text-terminal-muted">│</span>
             <StatusIndicator
               status={wsStatusMap[wsConnectionState] || 'offline'}
-              label={wsLabelMap[wsConnectionState] || 'WS UNKNOWN'}
+              label={wsLabelMap[wsConnectionState] || 'WS'}
               size="sm"
             />
             {wsConnectionState === 'failed' && (

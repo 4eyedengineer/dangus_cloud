@@ -83,6 +83,10 @@ export function AsciiSectionDivider({
   collapsed = false,
   onToggle,
   color = 'amber',
+  commandFlags = [],
+  indicatorStyle = 'arrow', // 'arrow' (►/▼) or 'caret' (^)
+  showTrailingDots = true,
+  showLeftBorder = false,
   className = ''
 }) {
   const colorClasses = {
@@ -93,41 +97,83 @@ export function AsciiSectionDivider({
     red: 'text-terminal-red'
   }
 
+  const borderColorClasses = {
+    muted: 'border-terminal-muted',
+    green: 'border-terminal-primary',
+    amber: 'border-terminal-secondary',
+    cyan: 'border-terminal-cyan',
+    red: 'border-terminal-red'
+  }
+
   const textColor = colorClasses[color] || colorClasses.amber
-  const indicator = collapsed ? '►' : '▼'
+  const borderColor = borderColorClasses[color] || borderColorClasses.amber
+
+  // v2 indicators: ^ for expandable hint, ► for collapsed, ▼ for expanded
+  const getIndicator = () => {
+    if (indicatorStyle === 'caret') {
+      return '^'
+    }
+    return collapsed ? '►' : '▼'
+  }
+
+  const indicator = getIndicator()
+  const displayTitle = showTrailingDots ? `${title}..` : title
+
+  // Render command flags if provided
+  const renderFlags = () => {
+    if (!commandFlags || commandFlags.length === 0) return null
+    return (
+      <div
+        className="text-terminal-ghost text-[0.85em] tracking-[0.5px] mb-1 select-none"
+        aria-hidden="true"
+      >
+        {commandFlags.join(' ')}
+      </div>
+    )
+  }
+
+  const wrapperClass = showLeftBorder
+    ? `border-l-2 ${borderColor} pl-2`
+    : ''
 
   if (onToggle) {
     return (
-      <button
-        onClick={onToggle}
-        className={`
-          flex items-center gap-2 w-full text-left font-mono ${textColor}
-          hover:text-glow-amber transition-terminal-base ${className}
-        `}
-        aria-expanded={!collapsed}
-      >
+      <div className={wrapperClass}>
+        {renderFlags()}
+        <button
+          onClick={onToggle}
+          className={`
+            flex items-center gap-2 w-full text-left font-mono ${textColor}
+            hover:text-glow-amber transition-terminal-fast ${className}
+          `}
+          aria-expanded={!collapsed}
+        >
+          <span aria-hidden="true">{indicator}</span>
+          <span className="tracking-terminal-wide">{displayTitle}</span>
+          <span
+            className="flex-1 overflow-hidden text-terminal-muted select-none"
+            aria-hidden="true"
+          >
+            {'─'.repeat(100)}
+          </span>
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <div className={wrapperClass}>
+      {renderFlags()}
+      <div className={`flex items-center gap-2 font-mono ${textColor} ${className}`}>
         <span aria-hidden="true">{indicator}</span>
-        <span className="uppercase tracking-terminal-wide">{title}</span>
+        <span className="tracking-terminal-wide">{displayTitle}</span>
         <span
           className="flex-1 overflow-hidden text-terminal-muted select-none"
           aria-hidden="true"
         >
           {'─'.repeat(100)}
         </span>
-      </button>
-    )
-  }
-
-  return (
-    <div className={`flex items-center gap-2 font-mono ${textColor} ${className}`}>
-      <span aria-hidden="true">{indicator}</span>
-      <span className="uppercase tracking-terminal-wide">{title}</span>
-      <span
-        className="flex-1 overflow-hidden text-terminal-muted select-none"
-        aria-hidden="true"
-      >
-        {'─'.repeat(100)}
-      </span>
+      </div>
     </div>
   )
 }

@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react'
 import { AsciiBox } from '../components/AsciiBox'
 import { AsciiDivider, AsciiSectionDivider } from '../components/AsciiDivider'
-import { StatusIndicator } from '../components/StatusIndicator'
 import TerminalButton from '../components/TerminalButton'
 import TerminalInput from '../components/TerminalInput'
 import TerminalToggle from '../components/TerminalToggle'
@@ -238,13 +237,6 @@ export function Settings({ user, onLogout }) {
       <div className="mt-4 space-y-4">
         <AsciiBox title="GitHub Connection" variant="green">
           <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <span className="font-mono text-xs text-terminal-muted">STATUS: </span>
-                <StatusIndicator status="online" label="CONNECTED" size="sm" />
-              </div>
-            </div>
-
             <div className="space-y-2">
               <div className="flex items-center gap-2">
                 <span className="font-mono text-xs text-terminal-muted">USERNAME:</span>

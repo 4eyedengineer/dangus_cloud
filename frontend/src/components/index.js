@@ -25,3 +25,8 @@ export { ServiceTable } from './ServiceTable'
 export { ResourceMetrics } from './ResourceMetrics'
 export { DomainManager } from './DomainManager'
 export { BranchSelector } from './BranchSelector'
+
+// v2 components
+export { DigitalDebris, DigitalDebrisFill } from './DigitalDebris'
+export { CommandFlags } from './CommandFlags'
+export { SegmentedGauge, SegmentedGaugeCompact } from './SegmentedGauge'

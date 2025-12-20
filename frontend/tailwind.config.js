@@ -8,10 +8,10 @@ export default {
     extend: {
       colors: {
         terminal: {
-          // Background colors
-          'bg-primary': '#0a0a0a',
-          'bg-secondary': '#121212',
-          'bg-elevated': '#151515',
+          // Background colors (v2 spec)
+          'bg-primary': '#0d0d0d',
+          'bg-secondary': '#1a1a1a',
+          'bg-elevated': '#252525',
           // Primary (phosphor green)
           'primary': '#33ff33',
           'primary-dim': '#22cc22',
@@ -23,10 +23,33 @@ export default {
           'red-dim': '#cc2222',
           // Accent cyan
           'cyan': '#00ffff',
-          // Muted grays
-          'muted': '#666666',
-          'muted-dark': '#444444',
+          // Text hierarchy (brightness-based)
+          'muted': '#888888',
+          'ghost': '#444444',
           'border': '#333333',
+        },
+        // Chart spectrum (v2)
+        chart: {
+          'cyan': '#00ffcc',
+          'magenta': '#ff66ff',
+          'purple': '#9966ff',
+          'orange': '#ff9933',
+          'blue': '#3399ff',
+        },
+        // Status thresholds (v2)
+        status: {
+          'healthy': '#33ff33',
+          'warning': '#aaff33',
+          'caution': '#ffaa33',
+          'critical': '#ff3333',
+        },
+        // Heat gradient for logo
+        heat: {
+          '1': '#ff3333',
+          '2': '#ff6633',
+          '3': '#ff9933',
+          '4': '#ffcc33',
+          '5': '#33ff33',
         },
       },
       fontFamily: {
