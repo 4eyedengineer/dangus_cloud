@@ -1,0 +1,89 @@
+# Local Development with Docker Compose
+#
+# Development mode (builds from source with hot reload):
+#   docker compose up              # Start all services
+#   docker compose up -d           # Start in background
+#   docker compose logs -f         # Follow logs
+#   docker compose down            # Stop all services
+#
+# Production images mode (pulls from Harbor):
+#   sudo ./scripts/setup-harbor-trust.sh  # One-time setup
+#   ./scripts/run-harbor-images.sh        # Pull & run Harbor images
+#
+# Access:
+#   Frontend: http://192.168.1.124:5173
+#   Backend:  http://192.168.1.124:3001
+#   Health:   http://192.168.1.124:3001/health
+
+services:
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend/src:/app/src
+      - ./frontend/public:/app/public
+      - ./frontend/index.html:/app/index.html
+    environment:
+      - VITE_API_URL=http://192.168.1.124:3001
+      - VITE_BACKEND_URL=http://192.168.1.124:3001
+    depends_on:
+      - backend
+
+  backend:
+    build:
+      context: .
+      dockerfile: ./backend/Dockerfile
+    ports:
+      - "3001:3001"
+    volumes:
+      - ./backend/src:/app/src
+      - ./templates:/app/templates
+    environment:
+      - PORT=3001
+      - HOST=0.0.0.0
+      - DATABASE_URL=postgres://dangus:dangus-dev-password@postgres:5432/dangus_cloud
+      - RUN_MIGRATIONS=true
+      - FRONTEND_URL=http://192.168.1.124:5173
+      - GITHUB_CLIENT_ID=${GITHUB_CLIENT_ID:-placeholder}
+      - GITHUB_CLIENT_SECRET=${GITHUB_CLIENT_SECRET:-placeholder}
+      - GITHUB_CALLBACK_URL=http://192.168.1.124:3001/auth/github/callback
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY:-devdevdevdevdevdevdevdevdevdevde}
+      - SESSION_SECRET=${SESSION_SECRET:-devsecretdevsecretdevsecretdevse}
+      - COOKIE_DOMAIN=192.168.1.124
+      - BASE_DOMAIN=192.168.1.124
+      # These won't work in dev (no k8s), but prevent crashes
+      - HARBOR_REGISTRY=harbor.192.168.1.124.nip.io
+      - HARBOR_ROBOT_USER=placeholder
+      - HARBOR_ROBOT_PASSWORD=placeholder
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+  postgres:
+    image: postgres:15-alpine
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=dangus
+      - POSTGRES_PASSWORD=dangus-dev-password
+      - POSTGRES_DB=dangus_cloud
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dangus"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+volumes:
+  postgres_data:

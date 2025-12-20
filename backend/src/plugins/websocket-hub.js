@@ -165,18 +165,27 @@ async function websocketHubPlugin(fastify, options) {
   }
 
   // Register WebSocket route
-  fastify.get('/ws', { websocket: true }, async (socket, req) => {
+  fastify.get('/ws', { websocket: true }, async (connection, req) => {
+    // @fastify/websocket v8 passes the raw WebSocket as first argument
+    // but we name it 'connection' for clarity and get the socket
+    const socket = connection.socket || connection;
+
     // Authenticate the connection
     // The user should already be authenticated via the session cookie
     const userId = req.user?.id;
 
     if (!userId) {
-      socket.send(JSON.stringify({
-        type: 'error',
-        error: 'Authentication required',
-        code: 4001
-      }));
-      socket.close(4001, 'Authentication required');
+      try {
+        socket.send(JSON.stringify({
+          type: 'error',
+          error: 'Authentication required',
+          code: 4001
+        }));
+        socket.close(4001, 'Authentication required');
+      } catch (err) {
+        logger.error('Failed to send auth error to WebSocket', { error: err.message });
+        socket.close(4001, 'Authentication required');
+      }
       return;
     }
 

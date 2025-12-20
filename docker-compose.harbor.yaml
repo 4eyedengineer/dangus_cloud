@@ -1,0 +1,30 @@
+# Harbor Image Override
+#
+# Use this to run production images from Harbor instead of building locally.
+#
+# Usage:
+#   docker compose -f docker-compose.yaml -f docker-compose.harbor.yaml up
+#
+# Pull latest images first:
+#   docker compose -f docker-compose.yaml -f docker-compose.harbor.yaml pull
+#
+# Or use the helper script:
+#   ./scripts/run-harbor-images.sh
+#
+# Prerequisites:
+#   sudo ./scripts/setup-harbor-trust.sh  (one-time setup)
+
+services:
+  frontend:
+    image: harbor.192.168.1.124.nip.io/dangus/dangus-frontend:latest
+    # Override volumes to not mount source (use image code instead)
+    volumes: []
+
+  backend:
+    image: harbor.192.168.1.124.nip.io/dangus/dangus-backend:latest
+    # Override volumes to not mount source (use image code instead)
+    # Keep templates for k8s manifest generation
+    volumes:
+      - ./templates:/app/templates
+    # Use production start command instead of dev
+    command: ["npm", "run", "start"]
