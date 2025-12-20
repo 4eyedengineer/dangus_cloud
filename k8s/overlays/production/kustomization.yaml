@@ -1,0 +1,45 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: dangus-cloud
+
+resources:
+  - ../../base
+
+# Production-specific patches
+patches:
+  # Increase backend resources for production
+  - target:
+      kind: Deployment
+      name: backend
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/requests/memory
+        value: "256Mi"
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/limits/memory
+        value: "1Gi"
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/limits/cpu
+        value: "1000m"
+
+  # Increase postgres resources
+  - target:
+      kind: Deployment
+      name: postgres
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/requests/memory
+        value: "256Mi"
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/limits/memory
+        value: "1Gi"
+
+# Image tags managed by ArgoCD Image Updater
+images:
+  - name: dangus-backend
+    newName: harbor.192.168.1.124.nip.io/dangus/dangus-backend
+    newTag: latest
+  - name: dangus-frontend
+    newName: harbor.192.168.1.124.nip.io/dangus/dangus-frontend
+    newTag: latest

@@ -358,7 +358,7 @@ export function streamPodLogs(namespace, podName, options = {}) {
   const ca = getCA();
   const urlObj = new URL(`${K8S_API_SERVER}${path}`);
 
-  const options = {
+  const reqOptions = {
     hostname: urlObj.hostname,
     port: urlObj.port || 443,
     path: urlObj.pathname + urlObj.search,
@@ -370,7 +370,7 @@ export function streamPodLogs(namespace, podName, options = {}) {
     rejectUnauthorized: !!ca,
   };
 
-  const req = https.request(options);
+  const req = https.request(reqOptions);
 
   const stream = {
     _handlers: { data: [], error: [], end: [] },

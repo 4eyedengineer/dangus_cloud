@@ -1,0 +1,110 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  labels:
+    app: backend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: backend
+  template:
+    metadata:
+      labels:
+        app: backend
+    spec:
+      serviceAccountName: dangus-backend
+      containers:
+        - name: backend
+          image: dangus-backend
+          ports:
+            - containerPort: 3001
+          env:
+            - name: PORT
+              value: "3001"
+            - name: HOST
+              value: "0.0.0.0"
+            - name: DATABASE_URL
+              value: "postgres://dangus:dangus-password@postgres:5432/dangus_cloud"
+            - name: RUN_MIGRATIONS
+              value: "true"
+            - name: FRONTEND_URL
+              valueFrom:
+                secretKeyRef:
+                  name: dangus-secrets
+                  key: FRONTEND_URL
+            - name: GITHUB_CALLBACK_URL
+              valueFrom:
+                secretKeyRef:
+                  name: dangus-secrets
+                  key: GITHUB_CALLBACK_URL
+            - name: COOKIE_DOMAIN
+              valueFrom:
+                secretKeyRef:
+                  name: dangus-secrets
+                  key: COOKIE_DOMAIN
+            - name: WEBHOOK_BASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: dangus-secrets
+                  key: WEBHOOK_BASE_URL
+            - name: BASE_DOMAIN
+              valueFrom:
+                secretKeyRef:
+                  name: dangus-secrets
+                  key: BASE_DOMAIN
+            - name: HARBOR_REGISTRY
+              valueFrom:
+                secretKeyRef:
+                  name: dangus-secrets
+                  key: HARBOR_REGISTRY
+            - name: HARBOR_ROBOT_USER
+              valueFrom:
+                secretKeyRef:
+                  name: dangus-secrets
+                  key: HARBOR_ROBOT_USER
+            - name: HARBOR_ROBOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: dangus-secrets
+                  key: HARBOR_ROBOT_PASSWORD
+            - name: GITHUB_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: dangus-secrets
+                  key: GITHUB_CLIENT_ID
+            - name: GITHUB_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: dangus-secrets
+                  key: GITHUB_CLIENT_SECRET
+            - name: ENCRYPTION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: dangus-secrets
+                  key: ENCRYPTION_KEY
+            - name: SESSION_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: dangus-secrets
+                  key: SESSION_SECRET
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 3001
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 3001
+            initialDelaySeconds: 15
+            periodSeconds: 30

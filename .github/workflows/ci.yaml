@@ -1,0 +1,83 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  REGISTRY: harbor.192.168.1.124.nip.io
+  PROJECT: dangus
+
+jobs:
+  build:
+    runs-on: arc-runner-set
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Harbor
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ secrets.HARBOR_USERNAME }}
+          password: ${{ secrets.HARBOR_PASSWORD }}
+
+      - name: Generate image tags
+        id: meta
+        run: |
+          SHA_SHORT=$(echo ${{ github.sha }} | cut -c1-7)
+          TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+
+          if [ "${{ github.event_name }}" == "pull_request" ]; then
+            TAG="pr-${{ github.event.number }}-${SHA_SHORT}"
+          else
+            TAG="${SHA_SHORT}"
+          fi
+
+          echo "tag=${TAG}" >> $GITHUB_OUTPUT
+          echo "sha_short=${SHA_SHORT}" >> $GITHUB_OUTPUT
+
+      - name: Build and push backend
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./backend/Dockerfile
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.PROJECT }}/dangus-backend:${{ steps.meta.outputs.tag }}
+            ${{ env.REGISTRY }}/${{ env.PROJECT }}/dangus-backend:latest
+          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ env.PROJECT }}/dangus-backend:cache
+          cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ env.PROJECT }}/dangus-backend:cache,mode=max
+
+      - name: Build and push frontend
+        uses: docker/build-push-action@v6
+        with:
+          context: ./frontend
+          file: ./frontend/Dockerfile
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.PROJECT }}/dangus-frontend:${{ steps.meta.outputs.tag }}
+            ${{ env.REGISTRY }}/${{ env.PROJECT }}/dangus-frontend:latest
+          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ env.PROJECT }}/dangus-frontend:cache
+          cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ env.PROJECT }}/dangus-frontend:cache,mode=max
+
+      - name: Summary
+        if: github.event_name != 'pull_request'
+        run: |
+          echo "### Images Built" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Image | Tag |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|-----|" >> $GITHUB_STEP_SUMMARY
+          echo "| Backend | \`${{ env.REGISTRY }}/${{ env.PROJECT }}/dangus-backend:${{ steps.meta.outputs.tag }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Frontend | \`${{ env.REGISTRY }}/${{ env.PROJECT }}/dangus-frontend:${{ steps.meta.outputs.tag }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "ArgoCD Image Updater will automatically deploy these images." >> $GITHUB_STEP_SUMMARY
