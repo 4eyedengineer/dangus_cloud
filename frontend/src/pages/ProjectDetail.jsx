@@ -25,14 +25,6 @@ export function ProjectDetail({ projectId, onServiceClick, onNewService, onBack 
   const { connectionState, subscribe, isConnected } = useWebSocket()
   const unsubscribesRef = useRef([])
 
-  // Check if any service has an active deployment
-  const hasActiveDeployments = () => {
-    if (!project?.services?.length) return false
-    return project.services.some(s =>
-      ['pending', 'building', 'deploying'].includes(s.current_status)
-    )
-  }
-
   // Initial load
   useEffect(() => {
     if (projectId) {
