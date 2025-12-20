@@ -1,0 +1,56 @@
+#!/bin/bash
+# Dangus Cloud Development Helper
+# Usage: ./dev [command]
+
+set -e
+cd "$(dirname "$0")"
+
+case "${1:-help}" in
+  up|start)
+    docker compose up -d
+    echo "Started: http://192.168.1.124:5173"
+    ;;
+  down|stop)
+    docker compose down
+    ;;
+  logs)
+    docker compose logs -f ${2:-}
+    ;;
+  restart)
+    docker compose restart ${2:-}
+    ;;
+  rebuild)
+    docker compose up -d --build
+    ;;
+  ps|status)
+    docker compose ps
+    ;;
+  harbor)
+    ./scripts/run-harbor-images.sh
+    ;;
+  pull)
+    ./scripts/run-harbor-images.sh --pull
+    ;;
+  db)
+    psql -h 192.168.1.124 -U dangus -d dangus_cloud
+    ;;
+  *)
+    cat <<EOF
+Dangus Cloud Dev Commands:
+
+  ./dev up        Start dev environment (hot reload)
+  ./dev down      Stop all containers
+  ./dev logs      Follow all logs (or: ./dev logs backend)
+  ./dev restart   Restart all (or: ./dev restart frontend)
+  ./dev rebuild   Rebuild and restart containers
+  ./dev ps        Show container status
+  ./dev harbor    Run with Harbor production images
+  ./dev pull      Pull latest Harbor images
+  ./dev db        Connect to PostgreSQL
+
+URLs:
+  Frontend: http://192.168.1.124:5173
+  Backend:  http://192.168.1.124:3001
+EOF
+    ;;
+esac
