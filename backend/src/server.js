@@ -120,7 +120,6 @@ const publicRoutes = [
   { method: 'GET', url: '/health' },
   { method: 'GET', url: '/auth/github' },
   { method: 'GET', url: '/auth/github/callback' },
-  { method: 'GET', url: '/ws' },
   { method: 'GET', url: '/ws/stats' },
 ];
 
