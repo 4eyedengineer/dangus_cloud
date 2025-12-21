@@ -1,6 +1,6 @@
 # Dangus Cloud
 
-Self-hosted PaaS for deploying containerized apps from GitHub repos. Similar to Railway/Render but on your own k3s infrastructure.
+Self-hosted PaaS for deploying containerized apps from GitHub repos. Similar to Railway/Render but on your own k3s infrastructure.  App objective is to make it as easy as possible to deploy and manage services with a retro terminal UI aesthetic. 
 
 ## Tech Stack
 
