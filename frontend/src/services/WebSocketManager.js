@@ -109,7 +109,8 @@ class WebSocketManager {
     this.setConnectionState('connecting');
 
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const host = import.meta.env.VITE_API_URL?.replace(/^https?:\/\//, '') || window.location.host;
+    const backendUrl = import.meta.env.VITE_BACKEND_URL;
+    const host = backendUrl?.replace(/^https?:\/\//, '') || window.location.host;
     const wsUrl = `${protocol}//${host}/ws`;
 
     try {
