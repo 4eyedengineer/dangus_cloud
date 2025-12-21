@@ -7,8 +7,12 @@ cd "$(dirname "$0")"
 
 case "${1:-help}" in
   up|start)
-    docker compose up -d
-    echo "Started: http://192.168.1.124:5173"
+    if [[ "$2" == "-d" || "$2" == "--detach" ]]; then
+      docker compose up -d
+      echo "Started: http://192.168.1.124:5173"
+    else
+      docker compose up
+    fi
     ;;
   down|stop)
     docker compose down
@@ -20,7 +24,12 @@ case "${1:-help}" in
     docker compose restart ${2:-}
     ;;
   rebuild)
-    docker compose up -d --build
+    if [[ "$2" == "-d" || "$2" == "--detach" ]]; then
+      docker compose up -d --build
+      echo "Rebuilt: http://192.168.1.124:5173"
+    else
+      docker compose up --build
+    fi
     ;;
   ps|status)
     docker compose ps
@@ -45,11 +54,13 @@ case "${1:-help}" in
     cat <<EOF
 Dangus Cloud Dev Commands:
 
-  ./dev up        Start dev environment (hot reload)
+  ./dev up        Start dev environment (foreground, shows logs)
+  ./dev up -d     Start detached (background)
   ./dev down      Stop all containers
   ./dev logs      Follow all logs (or: ./dev logs backend)
   ./dev restart   Restart all (or: ./dev restart frontend)
-  ./dev rebuild   Rebuild and restart containers
+  ./dev rebuild   Rebuild and restart (foreground)
+  ./dev rebuild -d  Rebuild detached
   ./dev ps        Show container status
   ./dev harbor    Run with Harbor production images
   ./dev pull      Pull latest Harbor images
