@@ -44,6 +44,25 @@ IMPORTANT: Follow the retro terminal aesthetic. See `terminal-ui-design-philosop
 - `templates/` - K8s manifest templates (`{{PLACEHOLDER}}` syntax)
 - `k8s/argocd/` - ArgoCD Application manifest
 
+## Playwright Testing
+
+Before using Playwright MCP to test the authenticated app, inject the session cookie:
+
+```javascript
+// Read cookie from .dev-session, then inject before navigating:
+await context.addCookies([{
+  name: 'session',
+  value: '<content-of-.dev-session>',
+  domain: '192.168.1.124',
+  path: '/',
+  httpOnly: true,
+  sameSite: 'Lax'
+}]);
+await page.goto('http://192.168.1.124:5173');
+```
+
+Update the cookie with `./dev auth <cookie>` when you get a new session.
+
 ## Do Not
 
 - Commit secrets, `.env` files, or `k8s/tls/*.key`

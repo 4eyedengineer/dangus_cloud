@@ -50,6 +50,19 @@ case "${1:-help}" in
     echo ""
     echo "Add to .env file to enable k3s deployments"
     ;;
+  auth)
+    if [ -z "$2" ]; then
+      if [ -f .dev-session ]; then
+        echo "Current session cookie:"
+        cat .dev-session
+      else
+        echo "No session cookie set. Usage: ./dev auth <cookie>"
+      fi
+    else
+      echo "$2" > .dev-session
+      echo "Session cookie saved to .dev-session"
+    fi
+    ;;
   *)
     cat <<EOF
 Dangus Cloud Dev Commands:
@@ -66,6 +79,8 @@ Dangus Cloud Dev Commands:
   ./dev pull      Pull latest Harbor images
   ./dev db        Connect to PostgreSQL
   ./dev token     Generate new k3s service account token
+  ./dev auth      Show current session cookie
+  ./dev auth <c>  Save session cookie for Playwright testing
 
 URLs:
   Frontend: http://192.168.1.124:5173
