@@ -1,0 +1,18 @@
+apiVersion: argocd-image-updater.argoproj.io/v1alpha1
+kind: ImageUpdater
+metadata:
+  name: dangus-cloud
+  namespace: argocd
+spec:
+  namespace: argocd
+  commonUpdateSettings:
+    updateStrategy: digest
+  writeBackConfig:
+    method: argocd
+  applicationRefs:
+    - namePattern: "dangus-cloud"
+      images:
+        - alias: backend
+          imageName: harbor.192.168.1.124.nip.io/dangus/dangus-backend:latest
+        - alias: frontend
+          imageName: harbor.192.168.1.124.nip.io/dangus/dangus-frontend:latest
