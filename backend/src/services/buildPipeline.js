@@ -6,16 +6,20 @@ import {
   deleteJob,
   getPodsByLabel,
   getPodLogs,
+  upsertConfigMap,
+  deleteConfigMap,
 } from './kubernetes.js';
 import logger from './logger.js';
 import {
   generateKanikoJobManifest,
+  generateKanikoJobManifestGenerated,
   generateDeploymentManifest,
   generateServiceManifest,
   generateIngressManifest,
   generatePVCManifest,
 } from './manifestGenerator.js';
 import { parseGitHubUrl, getDockerfileExposedPort } from './github.js';
+import { getGeneratedFile } from './dockerfileGenerator.js';
 import { updateDeploymentStatus } from '../routes/deployments.js';
 import { decrypt } from './encryption.js';
 import { sendDeploymentNotification } from './notifications.js';
@@ -90,6 +94,12 @@ export async function triggerBuild(db, service, deployment, commitSha, githubTok
   const jobName = generateJobName(service.name, commitSha);
   const imageTag = generateImageTag(namespace, service.name, commitSha);
   const gitSecretName = `git-creds-${jobName}`;
+  const dockerfileConfigMapName = `dockerfile-${jobName}`;
+
+  // Check if this service has a generated Dockerfile
+  const generatedDockerfile = await getGeneratedFile(db, service.id, 'dockerfile');
+  const generatedDockerignore = await getGeneratedFile(db, service.id, 'dockerignore');
+  const useGeneratedDockerfile = !!generatedDockerfile;
 
   try {
     // Create git credentials secret
@@ -99,40 +109,82 @@ export async function triggerBuild(db, service, deployment, commitSha, githubTok
     const { owner, repo } = parseGitHubUrl(service.repo_url);
     const repoUrl = `github.com/${owner}/${repo}`;
 
-    // Handle build_context for monorepo setups
-    // If build_context is set, prepend it to dockerfile_path
-    let dockerfilePath;
-    if (service.build_context) {
-      const context = service.build_context.replace(/^\.\//, '').replace(/\/$/, '');
-      dockerfilePath = `./${context}/${service.dockerfile_path}`;
-    } else {
-      dockerfilePath = `./${service.dockerfile_path}`;
-    }
+    let jobManifest;
 
-    // Generate and apply Kaniko job
-    const jobManifest = generateKanikoJobManifest({
-      namespace,
-      jobName,
-      repoUrl,
-      branch: service.branch,
-      commitSha,
-      dockerfilePath,
-      imageDest: imageTag,
-      gitSecretName,
-      registrySecretName: REGISTRY_SECRET_NAME,
-    });
+    if (useGeneratedDockerfile) {
+      // Using LLM-generated Dockerfile from ConfigMap
+      logger.info({
+        serviceName: service.name,
+        framework: generatedDockerfile.detectedFramework
+      }, 'Using generated Dockerfile for build');
+
+      // Create ConfigMap with generated Dockerfile (and optionally .dockerignore)
+      const configMapData = {
+        Dockerfile: generatedDockerfile.content
+      };
+      if (generatedDockerignore) {
+        configMapData['.dockerignore'] = generatedDockerignore.content;
+      }
+
+      await upsertConfigMap(namespace, dockerfileConfigMapName, configMapData);
+
+      // Generate Kaniko job that uses ConfigMap
+      jobManifest = generateKanikoJobManifestGenerated({
+        namespace,
+        jobName,
+        repoUrl,
+        branch: service.branch,
+        commitSha,
+        imageDest: imageTag,
+        gitSecretName,
+        registrySecretName: REGISTRY_SECRET_NAME,
+        dockerfileConfigMap: dockerfileConfigMapName,
+      });
+    } else {
+      // Using Dockerfile from repository
+      // Handle build_context for monorepo setups
+      let dockerfilePath;
+      if (service.build_context) {
+        const context = service.build_context.replace(/^\.\//, '').replace(/\/$/, '');
+        dockerfilePath = `./${context}/${service.dockerfile_path}`;
+      } else {
+        dockerfilePath = `./${service.dockerfile_path}`;
+      }
+
+      // Generate standard Kaniko job
+      jobManifest = generateKanikoJobManifest({
+        namespace,
+        jobName,
+        repoUrl,
+        branch: service.branch,
+        commitSha,
+        dockerfilePath,
+        imageDest: imageTag,
+        gitSecretName,
+        registrySecretName: REGISTRY_SECRET_NAME,
+      });
+    }
 
     await applyManifest(jobManifest);
 
-    return { jobName, imageTag, gitSecretName };
+    return {
+      jobName,
+      imageTag,
+      gitSecretName,
+      dockerfileConfigMapName: useGeneratedDockerfile ? dockerfileConfigMapName : null
+    };
   } catch (error) {
-    // Cleanup git secret on failure
+    // Cleanup secrets and configmaps on failure
     try {
       await deleteSecret(namespace, gitSecretName);
+      if (useGeneratedDockerfile) {
+        await deleteConfigMap(namespace, dockerfileConfigMapName);
+      }
     } catch (cleanupErr) {
-      logger.warn('Failed to cleanup git secret during build failure', {
+      logger.warn('Failed to cleanup resources during build failure', {
         namespace,
         secretName: gitSecretName,
+        configMapName: dockerfileConfigMapName,
         error: cleanupErr.message
       });
     }

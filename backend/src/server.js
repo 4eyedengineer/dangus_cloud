@@ -13,6 +13,7 @@ import webhookRoutes from './routes/webhooks.js';
 import githubRoutes from './routes/github.js';
 import domainRoutes from './routes/domains.js';
 import notificationRoutes from './routes/notifications.js';
+import dockerfileRoutes from './routes/dockerfile.js';
 import { startMetricsCollection, stopMetricsCollection } from './services/metricsCollector.js';
 
 const fastify = Fastify({
@@ -114,6 +115,9 @@ fastify.register(domainRoutes);
 
 // Register notification routes
 fastify.register(notificationRoutes);
+
+// Register Dockerfile generation routes
+fastify.register(dockerfileRoutes);
 
 // Routes that do not require authentication
 const publicRoutes = [

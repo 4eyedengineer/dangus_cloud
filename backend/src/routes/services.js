@@ -347,6 +347,22 @@ export default async function serviceRoutes(fastify, options) {
                       value: { type: 'string' }
                     }
                   }
+                },
+                // For AI-generated Dockerfiles
+                generated_dockerfile: {
+                  type: 'object',
+                  properties: {
+                    dockerfile: { type: 'string' },
+                    dockerignore: { type: 'string' },
+                    framework: {
+                      type: 'object',
+                      properties: {
+                        language: { type: 'string' },
+                        framework: { type: 'string' },
+                        explanation: { type: 'string' }
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -498,10 +514,42 @@ export default async function serviceRoutes(fastify, options) {
           }
         }
 
+        // Store generated Dockerfile if provided
+        if (svc.generated_dockerfile?.dockerfile) {
+          const detectedFramework = svc.generated_dockerfile.framework || {};
+          await client.query(
+            `INSERT INTO generated_files (service_id, file_type, content, llm_model, detected_framework)
+             VALUES ($1, 'dockerfile', $2, $3, $4)`,
+            [
+              service.id,
+              svc.generated_dockerfile.dockerfile,
+              'claude-3-5-haiku-20241022',
+              JSON.stringify(detectedFramework)
+            ]
+          );
+
+          // Also store dockerignore if provided
+          if (svc.generated_dockerfile.dockerignore) {
+            await client.query(
+              `INSERT INTO generated_files (service_id, file_type, content, llm_model, detected_framework)
+               VALUES ($1, 'dockerignore', $2, $3, $4)`,
+              [
+                service.id,
+                svc.generated_dockerfile.dockerignore,
+                'claude-3-5-haiku-20241022',
+                JSON.stringify(detectedFramework)
+              ]
+            );
+          }
+
+          fastify.log.info(`Stored generated Dockerfile for service ${service.name}`);
+        }
+
         createdServices.push({
           ...service,
           subdomain: computeSubdomain(ownershipCheck.project.name, serviceName),
-          webhook_url: computeWebhookUrl(service.id)
+          webhook_url: computeWebhookUrl(service.id),
+          has_generated_dockerfile: !!svc.generated_dockerfile?.dockerfile
         });
       }
 

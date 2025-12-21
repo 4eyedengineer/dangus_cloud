@@ -598,3 +598,82 @@ export async function getDeploymentReplicas(namespace, name) {
   const deployment = await getDeployment(namespace, name);
   return deployment.spec?.replicas || 0;
 }
+
+/**
+ * Create a ConfigMap in a namespace
+ * Used for storing generated Dockerfiles that Kaniko can mount
+ * @param {string} namespace - Kubernetes namespace
+ * @param {string} name - ConfigMap name
+ * @param {object} data - Key-value pairs of data (not base64 encoded)
+ * @returns {Promise<object>} Created ConfigMap
+ */
+export async function createConfigMap(namespace, name, data) {
+  const configMap = {
+    apiVersion: 'v1',
+    kind: 'ConfigMap',
+    metadata: {
+      name,
+      namespace,
+      labels: {
+        'app.kubernetes.io/managed-by': 'dangus-cloud',
+      },
+    },
+    data,
+  };
+
+  return k8sRequest('POST', `/api/v1/namespaces/${namespace}/configmaps`, configMap);
+}
+
+/**
+ * Update or create a ConfigMap (upsert)
+ * @param {string} namespace - Kubernetes namespace
+ * @param {string} name - ConfigMap name
+ * @param {object} data - Key-value pairs of data
+ * @returns {Promise<object>} Updated/created ConfigMap
+ */
+export async function upsertConfigMap(namespace, name, data) {
+  try {
+    // Try to get existing
+    await k8sRequest('GET', `/api/v1/namespaces/${namespace}/configmaps/${name}`);
+    // If exists, replace it
+    const configMap = {
+      apiVersion: 'v1',
+      kind: 'ConfigMap',
+      metadata: {
+        name,
+        namespace,
+        labels: {
+          'app.kubernetes.io/managed-by': 'dangus-cloud',
+        },
+      },
+      data,
+    };
+    return k8sRequest('PUT', `/api/v1/namespaces/${namespace}/configmaps/${name}`, configMap);
+  } catch (error) {
+    // If not found, create it
+    if (error.message?.includes('404') || error.status === 404) {
+      return createConfigMap(namespace, name, data);
+    }
+    throw error;
+  }
+}
+
+/**
+ * Delete a ConfigMap from a namespace
+ * @param {string} namespace - Kubernetes namespace
+ * @param {string} name - ConfigMap name
+ * @returns {Promise<object>}
+ */
+export async function deleteConfigMap(namespace, name) {
+  return k8sRequest('DELETE', `/api/v1/namespaces/${namespace}/configmaps/${name}`);
+}
+
+/**
+ * Get a ConfigMap from a namespace
+ * @param {string} namespace - Kubernetes namespace
+ * @param {string} name - ConfigMap name
+ * @returns {Promise<object>} ConfigMap object
+ */
+export async function getConfigMap(namespace, name) {
+  return k8sRequest('GET', `/api/v1/namespaces/${namespace}/configmaps/${name}`);
+}

@@ -11,6 +11,7 @@ import { useToast } from '../components/Toast'
 import { createProject } from '../api/projects'
 import { createServicesBatch, triggerDeploy } from '../api/services'
 import { analyzeRepo } from '../api/github'
+import { generateDockerfile } from '../api/dockerfile'
 
 const STEPS = {
   NAME: 0,
@@ -39,6 +40,9 @@ export function NewProjectWizard({ onComplete, onCancel }) {
 
   // Loading/error states
   const [analyzing, setAnalyzing] = useState(false)
+  const [generating, setGenerating] = useState(false)
+  const [generationStatus, setGenerationStatus] = useState('')
+  const [generatedInfo, setGeneratedInfo] = useState(null)
   const [creating, setCreating] = useState(false)
   const [error, setError] = useState(null)
   const [nameError, setNameError] = useState(null)
@@ -80,13 +84,14 @@ export function NewProjectWizard({ onComplete, onCancel }) {
     setSelectedRepo(repo)
     setAnalyzing(true)
     setError(null)
+    setGeneratedInfo(null)
 
     try {
       const result = await analyzeRepo(repo.url, repo.defaultBranch)
       setAnalysis(result)
 
       // Convert analysis to services array with selection state
-      const allServices = [
+      let allServices = [
         ...result.composeServices.map(s => ({
           ...s,
           selected: true
@@ -106,9 +111,48 @@ export function NewProjectWizard({ onComplete, onCancel }) {
         }))
       ]
 
+      // If no services found, try to generate a Dockerfile with AI
       if (allServices.length === 0) {
-        setError('No services found. Repository needs a docker-compose.yml or Dockerfile.')
         setAnalyzing(false)
+        setGenerating(true)
+        setGenerationStatus('Analyzing repository structure...')
+
+        try {
+          setGenerationStatus('Generating Dockerfile with AI...')
+          const generated = await generateDockerfile(repo.url, repo.defaultBranch)
+
+          if (generated.success) {
+            setGeneratedInfo(generated)
+
+            // Create a service from the generated Dockerfile
+            allServices = [{
+              name: projectName || repo.name || 'app',
+              type: 'container',
+              image: null,
+              build: {
+                context: '.',
+                dockerfile: 'Dockerfile'
+              },
+              port: generated.detectedPort || 8080,
+              envVars: [],
+              hasStorage: false,
+              selected: true,
+              generated: true,
+              framework: generated.framework
+            }]
+
+            setServices(allServices)
+            setCurrentStep(STEPS.REVIEW)
+          } else {
+            setError('Failed to generate Dockerfile. Please add one manually.')
+          }
+        } catch (genErr) {
+          console.error('Dockerfile generation failed:', genErr)
+          setError(`No Dockerfile found and generation failed: ${genErr.message}`)
+        } finally {
+          setGenerating(false)
+          setGenerationStatus('')
+        }
         return
       }
 
@@ -185,7 +229,15 @@ export function NewProjectWizard({ onComplete, onCancel }) {
         health_check_path: s.healthCheckPath || null,
         // Only include storage_gb when hasStorage is true (schema doesn't accept null)
         ...(s.hasStorage ? { storage_gb: 5 } : {}),
-        env_vars: s.envVars || []
+        env_vars: s.envVars || [],
+        // Include generated Dockerfile if this service was AI-generated
+        ...(s.generated && generatedInfo ? {
+          generated_dockerfile: {
+            dockerfile: generatedInfo.dockerfile,
+            dockerignore: generatedInfo.dockerignore,
+            framework: generatedInfo.framework
+          }
+        } : {})
       }))
 
       // Create services
@@ -333,12 +385,17 @@ export function NewProjectWizard({ onComplete, onCancel }) {
 
   const renderRepoStep = () => (
     <div className="space-y-4">
-      {analyzing ? (
+      {analyzing || generating ? (
         <div className="text-center py-12">
           <TerminalSpinner className="text-2xl" />
           <p className="font-mono text-terminal-muted mt-4">
-            Analyzing {selectedRepo?.fullName}...
+            {generating ? generationStatus : `Analyzing ${selectedRepo?.fullName}...`}
           </p>
+          {generating && (
+            <p className="font-mono text-xs text-terminal-secondary mt-2">
+              AI is detecting your project type and generating a Dockerfile
+            </p>
+          )}
         </div>
       ) : (
         <>
@@ -374,6 +431,7 @@ export function NewProjectWizard({ onComplete, onCancel }) {
               setCurrentStep(STEPS.REPO)
               setAnalysis(null)
               setServices([])
+              setGeneratedInfo(null)
             }}
           >
             [ CHANGE ]
@@ -381,8 +439,33 @@ export function NewProjectWizard({ onComplete, onCancel }) {
         </div>
       </AsciiBox>
 
+      {/* AI-Generated Dockerfile Info */}
+      {generatedInfo && (
+        <AsciiBox title="AI GENERATED DOCKERFILE" variant="magenta">
+          <div className="font-mono text-sm space-y-2">
+            <div className="flex justify-between">
+              <span className="text-terminal-muted">LANGUAGE:</span>
+              <span className="text-terminal-primary">{generatedInfo.framework?.language || 'unknown'}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-terminal-muted">FRAMEWORK:</span>
+              <span className="text-terminal-primary">{generatedInfo.framework?.framework || 'none'}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-terminal-muted">PORT:</span>
+              <span className="text-terminal-cyan">{generatedInfo.detectedPort || '8080'}</span>
+            </div>
+            {generatedInfo.framework?.explanation && (
+              <div className="mt-2 pt-2 border-t border-terminal-border">
+                <p className="text-xs text-terminal-muted">{generatedInfo.framework.explanation}</p>
+              </div>
+            )}
+          </div>
+        </AsciiBox>
+      )}
+
       {/* Services Table */}
-      <AsciiBox title="DETECTED SERVICES" variant="green">
+      <AsciiBox title={generatedInfo ? "SERVICE (AI GENERATED)" : "DETECTED SERVICES"} variant="green">
         <ServiceTable
           services={services}
           onChange={setServices}
