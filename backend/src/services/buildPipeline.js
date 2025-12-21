@@ -591,9 +591,10 @@ export async function detectDockerfilePort(db, service, githubToken) {
  * @param {string} githubToken - Decrypted GitHub token (null for image-only services)
  * @param {string} namespace - Kubernetes namespace
  * @param {string} projectName - Project name for subdomain
+ * @param {string} userHash - User hash for subdomain
  * @param {object} project - Project object (optional, for notifications)
  */
-export async function runBuildPipeline(db, service, deployment, commitSha, githubToken, namespace, projectName, project = null) {
+export async function runBuildPipeline(db, service, deployment, commitSha, githubToken, namespace, projectName, userHash, project = null) {
   // Get decrypted env vars (needed for both paths)
   const envVars = await getDecryptedEnvVars(db, service.id);
 

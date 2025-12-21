@@ -6,7 +6,7 @@ Self-hosted PaaS for deploying containerized apps from GitHub repos (like Railwa
 
 ## Stack
 
-React 18 + Vite | Fastify 4 + PostgreSQL 15 | k3s + Traefik | Harbor | ArgoCD | GitHub Actions (ARC)
+React 18 + Vite | Fastify 4 + PostgreSQL 15 | k3s + Traefik | Harbor | ArgoCD | GitHub Actions (ARC) | Claude Haiku 4.5 (Dockerfile generation)
 
 ## Commands
 
@@ -38,11 +38,24 @@ IMPORTANT: Follow the retro terminal aesthetic. See `terminal-ui-design-philosop
 ## Key Paths
 
 - `backend/src/routes/` - API endpoints
-- `backend/src/services/` - Business logic (kubernetes, harbor, github, buildPipeline)
+- `backend/src/services/` - Business logic (kubernetes, harbor, github, buildPipeline, llmClient, dockerfileGenerator)
 - `frontend/src/pages/` - Route components
 - `frontend/src/components/` - Reusable Terminal* components
 - `templates/` - K8s manifest templates (`{{PLACEHOLDER}}` syntax)
 - `k8s/argocd/` - ArgoCD Application manifest
+
+## LLM Dockerfile Generation
+
+Repos without a Dockerfile get one auto-generated via Claude Haiku 4.5. The LLM analyzes the repo structure and generates a production-ready multi-stage Dockerfile.
+
+**Flow:** Select repo → No Dockerfile? → LLM generates one → Build with ConfigMap injection → Deploy
+
+**Key files:**
+- `backend/src/services/llmClient.js` - Anthropic SDK wrapper
+- `backend/src/services/dockerfileGenerator.js` - Orchestration
+- `templates/kaniko-job-generated.yaml.tpl` - Kaniko template with ConfigMap mount
+
+**Required env var:** `ANTHROPIC_API_KEY` in `.env`
 
 ## Playwright Testing
 

@@ -1057,6 +1057,7 @@ export default async function serviceRoutes(fastify, options) {
         githubToken,
         namespace,
         service.project_name,
+        userHash,
         project
       ).catch(err => {
         fastify.log.error(`Build pipeline failed for deployment ${deployment.id}: ${err.message}`);
@@ -2228,6 +2229,7 @@ export default async function serviceRoutes(fastify, options) {
           githubToken,
           namespace,
           targetProjectName,
+          userHash,
           project
         ).catch(err => {
           fastify.log.error(`Build pipeline failed for cloned service ${newService.id}: ${err.message}`);
