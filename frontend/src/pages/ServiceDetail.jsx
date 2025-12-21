@@ -12,7 +12,7 @@ import { DomainManager } from '../components/DomainManager'
 import { LogViewer } from '../components/LogViewer'
 import { HealthStatus } from '../components/HealthStatus'
 import { CloneServiceModal } from '../components/CloneServiceModal'
-import { fetchService, triggerDeploy, fetchWebhookSecret, restartService, fetchServiceMetrics, validateDockerfile, fetchServiceHealth, fetchSuggestedPort, fixServicePort, rollbackService } from '../api/services'
+import { fetchService, triggerDeploy, fetchWebhookSecret, restartService, fetchServiceMetrics, validateDockerfile, fetchServiceHealth, fetchSuggestedPort, fixServicePort, rollbackService, startService, stopService } from '../api/services'
 import { fetchEnvVars, createEnvVar, updateEnvVar, deleteEnvVar, revealEnvVar } from '../api/envVars'
 import { fetchDeployments } from '../api/deployments'
 import { ApiError } from '../api/utils'
@@ -64,6 +64,7 @@ export function ServiceDetail({ serviceId, onBack }) {
   const [validationCollapsed, setValidationCollapsed] = useState(true)
 
   const [fixingPort, setFixingPort] = useState(false)
+  const [changingState, setChangingState] = useState(false)
 
   const toast = useToast()
   const { connectionState: wsConnectionState, isConnected: wsIsConnected } = useWebSocket()
@@ -412,6 +413,41 @@ export function ServiceDetail({ serviceId, onBack }) {
     }
   }
 
+  // Derive service running state from deployment status
+  const isServiceRunning = useCallback(() => {
+    // If we have a live deployment status, the service is running
+    const latestStatus = wsDeploymentStatus || deployments[0]?.status
+    return latestStatus === 'live'
+  }, [wsDeploymentStatus, deployments])
+
+  // Check if service has ever been deployed
+  const hasBeenDeployed = deployments.length > 0 && deployments.some(d => d.status === 'live' || d.image_tag)
+
+  const handleToggleServiceState = async () => {
+    if (changingState) return
+
+    const currentlyRunning = isServiceRunning()
+    const newState = currentlyRunning ? 'stopped' : 'running'
+    setChangingState(true)
+
+    try {
+      if (newState === 'stopped') {
+        await stopService(serviceId)
+        toast.success('Service stopped')
+      } else {
+        await startService(serviceId)
+        toast.success('Service started')
+      }
+      // Refresh service data to get updated status
+      await loadServiceData()
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : `Failed to ${newState === 'stopped' ? 'stop' : 'start'} service`
+      toast.error(message)
+    } finally {
+      setChangingState(false)
+    }
+  }
+
   // Get the latest live deployment (for determining which deployments can be rolled back to)
   const latestLiveDeployment = deployments.find(d => d.status === 'live')
 
@@ -577,6 +613,19 @@ export function ServiceDetail({ serviceId, onBack }) {
             onClick={() => setShowCloneModal(true)}
           >
             [ CLONE ]
+          </TerminalButton>
+          <TerminalButton
+            variant={isServiceRunning() ? 'danger' : 'primary'}
+            onClick={handleToggleServiceState}
+            disabled={changingState || !hasBeenDeployed}
+            title={!hasBeenDeployed ? 'Deploy service first' : undefined}
+          >
+            {changingState
+              ? '[ PROCESSING... ]'
+              : isServiceRunning()
+                ? '[ STOP ]'
+                : '[ START ]'
+            }
           </TerminalButton>
           <TerminalButton
             variant="primary"

@@ -250,13 +250,14 @@ export async function watchBuildJob(db, namespace, jobName, deploymentId, gitSec
  * @param {object} deployment - Deployment object from database
  * @param {string} imageTag - Docker image tag
  * @param {string} namespace - Kubernetes namespace
- * @param {string} userHash - User hash for subdomain
+ * @param {string} projectName - Project name for subdomain
  * @param {Array<{name: string, value: string}>} envVars - Decrypted environment variables
  * @returns {Promise<void>}
  */
-export async function deployService(db, service, deployment, imageTag, namespace, userHash, envVars = []) {
+export async function deployService(db, service, deployment, imageTag, namespace, projectName, envVars = []) {
   try {
-    const subdomain = `${userHash}-${service.name}`;
+    // URL pattern: {projectName}-{serviceName}.{baseDomain}
+    const subdomain = `${projectName}-${service.name}`;
 
     // Generate PVC manifest if storage is configured
     if (service.storage_gb) {
@@ -537,10 +538,10 @@ export async function detectDockerfilePort(db, service, githubToken) {
  * @param {string} commitSha - Git commit SHA (null for image-only services)
  * @param {string} githubToken - Decrypted GitHub token (null for image-only services)
  * @param {string} namespace - Kubernetes namespace
- * @param {string} userHash - User hash for subdomain
+ * @param {string} projectName - Project name for subdomain
  * @param {object} project - Project object (optional, for notifications)
  */
-export async function runBuildPipeline(db, service, deployment, commitSha, githubToken, namespace, userHash, project = null) {
+export async function runBuildPipeline(db, service, deployment, commitSha, githubToken, namespace, projectName, project = null) {
   // Get decrypted env vars (needed for both paths)
   const envVars = await getDecryptedEnvVars(db, service.id);
 
@@ -564,7 +565,7 @@ export async function runBuildPipeline(db, service, deployment, commitSha, githu
     });
 
     // Deploy directly with the specified image
-    await deployService(db, service, deployment, service.image, namespace, userHash, envVars);
+    await deployService(db, service, deployment, service.image, namespace, projectName, envVars);
 
     // Get updated deployment for notification
     const finalDeployment = await getDeploymentById(db, deployment.id);
@@ -624,7 +625,7 @@ export async function runBuildPipeline(db, service, deployment, commitSha, githu
   }
 
   // Deploy the service
-  await deployService(db, service, deployment, buildResult.imageTag, namespace, userHash, envVars);
+  await deployService(db, service, deployment, buildResult.imageTag, namespace, projectName, envVars);
 
   // Get updated deployment for notification
   const finalDeployment = await getDeploymentById(db, deployment.id);

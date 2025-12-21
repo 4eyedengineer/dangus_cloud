@@ -2,6 +2,7 @@ import fp from 'fastify-plugin';
 import wsManager from '../services/websocket-manager.js';
 import appEvents from '../services/event-emitter.js';
 import logger from '../services/logger.js';
+import { registerService, unregisterService } from '../services/metricsCollector.js';
 
 /**
  * WebSocket Hub Plugin
@@ -116,6 +117,35 @@ async function websocketHubPlugin(fastify, options) {
         }
 
         wsManager.subscribe(socket, channel);
+
+        // Register service for metrics collection when subscribing to metrics/health channels
+        const channelParts = channel.split(':');
+        if (channelParts[0] === 'service' && (channelParts[2] === 'metrics' || channelParts[2] === 'health')) {
+          const serviceId = channelParts[1];
+          try {
+            // Get service details for metrics collection
+            const serviceResult = await db.query(
+              `SELECT s.id, s.name, p.name as project_name
+               FROM services s
+               JOIN projects p ON s.project_id = p.id
+               WHERE s.id = $1`,
+              [serviceId]
+            );
+            if (serviceResult.rows.length > 0) {
+              const svc = serviceResult.rows[0];
+              // Namespace is just the project name now
+              registerService(serviceId, svc.project_name, svc.name, svc.project_name);
+              logger.debug(`Registered service for metrics collection`, {
+                serviceId,
+                namespace: svc.project_name,
+                serviceName: svc.name
+              });
+            }
+          } catch (err) {
+            logger.warn(`Failed to register service for metrics`, { serviceId, error: err.message });
+          }
+        }
+
         wsManager.send(socket, {
           type: 'subscribed',
           id,
@@ -136,6 +166,23 @@ async function websocketHubPlugin(fastify, options) {
         }
 
         wsManager.unsubscribe(socket, channel);
+
+        // Check if we should unregister service from metrics collection
+        // Only unregister if no other subscribers for this service
+        const channelParts = channel.split(':');
+        if (channelParts[0] === 'service' && (channelParts[2] === 'metrics' || channelParts[2] === 'health')) {
+          const serviceId = channelParts[1];
+          // Check if any other clients are subscribed to this service's metrics/health
+          const metricsChannel = `service:${serviceId}:metrics`;
+          const healthChannel = `service:${serviceId}:health`;
+          const metricsCount = wsManager.getChannelSubscriberCount(metricsChannel);
+          const healthCount = wsManager.getChannelSubscriberCount(healthChannel);
+          if (metricsCount === 0 && healthCount === 0) {
+            unregisterService(serviceId);
+            logger.debug(`Unregistered service from metrics collection`, { serviceId });
+          }
+        }
+
         wsManager.send(socket, {
           type: 'unsubscribed',
           id,
@@ -215,12 +262,45 @@ async function websocketHubPlugin(fastify, options) {
 
     // Handle disconnection
     socket.on('close', () => {
+      // Before removing connection, check if we need to unregister any services
+      const channels = wsManager.getSocketChannels(socket);
+      for (const channel of channels) {
+        const channelParts = channel.split(':');
+        if (channelParts[0] === 'service' && (channelParts[2] === 'metrics' || channelParts[2] === 'health')) {
+          const serviceId = channelParts[1];
+          // Check subscriber count AFTER this socket is removed
+          // Subtract 1 since this socket is still in the count
+          const metricsChannel = `service:${serviceId}:metrics`;
+          const healthChannel = `service:${serviceId}:health`;
+          const metricsCount = wsManager.getChannelSubscriberCount(metricsChannel) - (channel === metricsChannel ? 1 : 0);
+          const healthCount = wsManager.getChannelSubscriberCount(healthChannel) - (channel === healthChannel ? 1 : 0);
+          if (metricsCount <= 0 && healthCount <= 0) {
+            unregisterService(serviceId);
+            logger.debug('Unregistered service on socket close', { serviceId });
+          }
+        }
+      }
       wsManager.removeConnection(socket);
     });
 
-    // Handle errors
+    // Handle errors - same cleanup as close
     socket.on('error', (err) => {
       logger.error('WebSocket error', { userId, error: err.message });
+      // Unregister services before removing connection
+      const channels = wsManager.getSocketChannels(socket);
+      for (const channel of channels) {
+        const channelParts = channel.split(':');
+        if (channelParts[0] === 'service' && (channelParts[2] === 'metrics' || channelParts[2] === 'health')) {
+          const serviceId = channelParts[1];
+          const metricsChannel = `service:${serviceId}:metrics`;
+          const healthChannel = `service:${serviceId}:health`;
+          const metricsCount = wsManager.getChannelSubscriberCount(metricsChannel) - (channel === metricsChannel ? 1 : 0);
+          const healthCount = wsManager.getChannelSubscriberCount(healthChannel) - (channel === healthChannel ? 1 : 0);
+          if (metricsCount <= 0 && healthCount <= 0) {
+            unregisterService(serviceId);
+          }
+        }
+      }
       wsManager.removeConnection(socket);
     });
   });

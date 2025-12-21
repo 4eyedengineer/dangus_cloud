@@ -151,3 +151,24 @@ export async function rollbackService(id, deploymentId) {
     body: JSON.stringify({ deployment_id: deploymentId }),
   });
 }
+
+/**
+ * Set the state of a service (start/stop)
+ * @param {string} id - Service ID
+ * @param {string} state - 'running' or 'stopped'
+ * @returns {Promise<{service: string, state: string, replicas: number, previousReplicas: number}>}
+ */
+export async function setServiceState(id, state) {
+  return apiFetch(`/services/${id}/state`, {
+    method: 'PATCH',
+    body: JSON.stringify({ state }),
+  });
+}
+
+export async function startService(id) {
+  return setServiceState(id, 'running');
+}
+
+export async function stopService(id) {
+  return setServiceState(id, 'stopped');
+}

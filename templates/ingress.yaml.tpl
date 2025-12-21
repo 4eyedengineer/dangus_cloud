@@ -1,10 +1,10 @@
 # Kubernetes Ingress Template for User Projects
 #
 # Template Variables:
-#   namespace   - Kubernetes namespace (e.g., `a1b2c3-myapp`)
+#   namespace   - Kubernetes namespace (project name, e.g., `myproject`)
 #   serviceName - Service name
 #   port        - Service port number
-#   subdomain   - Subdomain prefix (e.g., `a1b2c3-myservice`)
+#   subdomain   - Subdomain prefix (e.g., `myproject-myservice`)
 #   baseDomain  - Base domain (e.g., `192.168.1.124.nip.io`)
 
 apiVersion: networking.k8s.io/v1

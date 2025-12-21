@@ -21,3 +21,18 @@ export async function deleteProject(id) {
     method: 'DELETE',
   });
 }
+
+export async function setProjectState(id, state) {
+  return apiFetch(`/projects/${id}/state`, {
+    method: 'PATCH',
+    body: JSON.stringify({ state }),
+  });
+}
+
+export async function startProject(id) {
+  return setProjectState(id, 'running');
+}
+
+export async function stopProject(id) {
+  return setProjectState(id, 'stopped');
+}

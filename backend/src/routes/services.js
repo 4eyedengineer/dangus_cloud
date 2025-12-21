@@ -1,5 +1,5 @@
 import { generateWebhookSecret } from '../services/encryption.js';
-import { deleteDeployment, deleteService, deleteIngress, deletePVC, rolloutRestart, deleteServicePods, getPodMetrics, getDeployment, getPodsByLabel, getPodLogs, streamPodLogs, getPodHealth, getPodEvents, patchService, patchDeployment, patchIngress } from '../services/kubernetes.js';
+import { deleteDeployment, deleteService, deleteIngress, deletePVC, rolloutRestart, deleteServicePods, getPodMetrics, getDeployment, getPodsByLabel, getPodLogs, streamPodLogs, getPodHealth, getPodEvents, patchService, patchDeployment, patchIngress, scaleDeployment } from '../services/kubernetes.js';
 import { getLatestCommit, getFileContent, getDockerfileExposedPort } from '../services/github.js';
 import { decrypt, encrypt } from '../services/encryption.js';
 import { runBuildPipeline, deployService, getDecryptedEnvVars } from '../services/buildPipeline.js';
@@ -55,8 +55,9 @@ function validateEnvVarKey(key) {
 const MASKED_VALUE = '••••••••';
 const BASE_DOMAIN = process.env.BASE_DOMAIN || '192.168.1.124.nip.io';
 
-function computeSubdomain(userHash, serviceName) {
-  return `${userHash}-${serviceName}`;
+function computeSubdomain(projectName, serviceName) {
+  // URL pattern: {projectName}-{serviceName}.{baseDomain}
+  return `${projectName}-${serviceName}`;
 }
 
 function computeServiceUrl(subdomain) {
@@ -68,8 +69,9 @@ function computeWebhookUrl(serviceId) {
   return `${baseUrl}/${serviceId}`;
 }
 
-function computeNamespace(userHash, projectName) {
-  return `${userHash}-${projectName}`;
+function computeNamespace(projectName) {
+  // Namespace is just the project name (globally unique)
+  return projectName;
 }
 
 function parseResourceQuantity(value) {
@@ -287,7 +289,7 @@ export default async function serviceRoutes(fastify, options) {
       );
 
       const service = result.rows[0];
-      const subdomain = computeSubdomain(userHash, serviceName);
+      const subdomain = computeSubdomain(project.name, serviceName);
       const webhookUrl = computeWebhookUrl(service.id);
 
       fastify.log.info(`Created service: ${serviceName} (${service.id}) in project ${projectId}`);
@@ -498,7 +500,7 @@ export default async function serviceRoutes(fastify, options) {
 
         createdServices.push({
           ...service,
-          subdomain: computeSubdomain(userHash, serviceName),
+          subdomain: computeSubdomain(ownershipCheck.project.name, serviceName),
           webhook_url: computeWebhookUrl(service.id)
         });
       }
@@ -560,7 +562,7 @@ export default async function serviceRoutes(fastify, options) {
       );
 
       const latestDeployment = deploymentResult.rows[0] || null;
-      const subdomain = computeSubdomain(userHash, service.name);
+      const subdomain = computeSubdomain(service.project_name, service.name);
       const webhookUrl = computeWebhookUrl(serviceId);
       const serviceUrl = computeServiceUrl(subdomain);
 
@@ -616,7 +618,7 @@ export default async function serviceRoutes(fastify, options) {
     }
 
     const { service } = ownershipCheck;
-    const namespace = computeNamespace(userHash, service.project_name);
+    const namespace = computeNamespace(service.project_name);
 
     try {
       // Get pod metrics from metrics-server
@@ -727,8 +729,8 @@ export default async function serviceRoutes(fastify, options) {
       };
     }
 
-    const namespace = computeNamespace(userHash, service.project_name);
-    const subdomain = computeSubdomain(userHash, service.name);
+    const namespace = computeNamespace(service.project_name);
+    const subdomain = computeSubdomain(service.project_name, service.name);
 
     try {
       // Get pod health from Kubernetes
@@ -849,7 +851,7 @@ export default async function serviceRoutes(fastify, options) {
       // Return consistent format with GET endpoint (include computed fields)
       return {
         ...service,
-        subdomain: computeSubdomain(userHash, service.name),
+        subdomain: computeSubdomain(ownershipCheck.service.project_name, service.name),
         webhook_url: computeWebhookUrl(serviceId),
       };
     } catch (err) {
@@ -880,7 +882,7 @@ export default async function serviceRoutes(fastify, options) {
     }
 
     const { service } = ownershipCheck;
-    const namespace = computeNamespace(userHash, service.project_name);
+    const namespace = computeNamespace(service.project_name);
 
     try {
       // Delete K8s resources (ignore 404 errors)
@@ -940,7 +942,7 @@ export default async function serviceRoutes(fastify, options) {
     }
 
     const { service } = ownershipCheck;
-    const namespace = computeNamespace(userHash, service.project_name);
+    const namespace = computeNamespace(service.project_name);
 
     try {
       let deployment;
@@ -1006,7 +1008,7 @@ export default async function serviceRoutes(fastify, options) {
         commitSha,
         githubToken,
         namespace,
-        userHash,
+        service.project_name,
         project
       ).catch(err => {
         fastify.log.error(`Build pipeline failed for deployment ${deployment.id}: ${err.message}`);
@@ -1056,7 +1058,7 @@ export default async function serviceRoutes(fastify, options) {
     }
 
     const { service } = ownershipCheck;
-    const namespace = computeNamespace(userHash, service.project_name);
+    const namespace = computeNamespace(service.project_name);
 
     try {
       // Get target deployment
@@ -1111,7 +1113,7 @@ export default async function serviceRoutes(fastify, options) {
         newDeployment,
         target.image_tag,
         namespace,
-        userHash,
+        service.project_name,
         envVars
       ).catch(err => {
         fastify.log.error(`Rollback deployment failed for ${newDeployment.id}: ${err.message}`);
@@ -1162,7 +1164,7 @@ export default async function serviceRoutes(fastify, options) {
     }
 
     const { service } = ownershipCheck;
-    const namespace = computeNamespace(userHash, service.project_name);
+    const namespace = computeNamespace(service.project_name);
 
     try {
       if (type === 'rolling') {
@@ -1378,7 +1380,7 @@ export default async function serviceRoutes(fastify, options) {
     }
 
     const { service } = ownershipCheck;
-    const namespace = computeNamespace(userHash, service.project_name);
+    const namespace = computeNamespace(service.project_name);
 
     // Determine the target port - use provided port or detected_port
     let targetPort = newPort;
@@ -1456,7 +1458,7 @@ export default async function serviceRoutes(fastify, options) {
 
       // Update Kubernetes Ingress backend port
       try {
-        const subdomain = computeSubdomain(userHash, service.name);
+        const subdomain = computeSubdomain(service.project_name, service.name);
         await patchIngress(namespace, service.name, {
           spec: {
             rules: [{
@@ -1535,7 +1537,7 @@ export default async function serviceRoutes(fastify, options) {
     }
 
     const { service } = ownershipCheck;
-    const namespace = computeNamespace(userHash, service.project_name);
+    const namespace = computeNamespace(service.project_name);
 
     try {
       // Get all pods for this service
@@ -1625,7 +1627,7 @@ export default async function serviceRoutes(fastify, options) {
     }
 
     const { service } = ownershipCheck;
-    const namespace = computeNamespace(userHash, service.project_name);
+    const namespace = computeNamespace(service.project_name);
 
     try {
       // Get pods if no specific pod requested
@@ -2062,8 +2064,9 @@ export default async function serviceRoutes(fastify, options) {
 
     // Determine target project (default to same project)
     const targetProjectId = project_id || sourceService.project_id;
+    let targetProjectName;
 
-    // If cloning to different project, verify ownership
+    // If cloning to different project, verify ownership and get name
     if (targetProjectId !== sourceService.project_id) {
       const targetCheck = await verifyProjectOwnership(targetProjectId, userId);
       if (targetCheck.error) {
@@ -2072,6 +2075,9 @@ export default async function serviceRoutes(fastify, options) {
           message: targetCheck.error,
         });
       }
+      targetProjectName = targetCheck.project.name;
+    } else {
+      targetProjectName = sourceService.project_name;
     }
 
     try {
@@ -2117,7 +2123,7 @@ export default async function serviceRoutes(fastify, options) {
         );
       }
 
-      const subdomain = computeSubdomain(userHash, newServiceName);
+      const subdomain = computeSubdomain(targetProjectName, newServiceName);
       const webhookUrl = computeWebhookUrl(newService.id);
 
       fastify.log.info(`Cloned service ${sourceService.name} (${sourceId}) to ${newServiceName} (${newService.id})`);
@@ -2134,13 +2140,8 @@ export default async function serviceRoutes(fastify, options) {
         );
         deployment = deployResult.rows[0];
 
-        // Get project name for namespace
-        const projectResult = await fastify.db.query(
-          'SELECT name FROM projects WHERE id = $1',
-          [targetProjectId]
-        );
-        const projectName = projectResult.rows[0].name;
-        const namespace = computeNamespace(userHash, projectName);
+        // Use already-resolved target project name for namespace
+        const namespace = computeNamespace(targetProjectName);
 
         // Get GitHub token if needed for repo-based service
         let githubToken = null;
@@ -2166,7 +2167,7 @@ export default async function serviceRoutes(fastify, options) {
         // Construct project object for notifications
         const project = {
           id: targetProjectId,
-          name: projectName,
+          name: targetProjectName,
           user_id: userId,
         };
 
@@ -2178,7 +2179,7 @@ export default async function serviceRoutes(fastify, options) {
           commitSha || 'clone-deploy',
           githubToken,
           namespace,
-          userHash,
+          targetProjectName,
           project
         ).catch(err => {
           fastify.log.error(`Build pipeline failed for cloned service ${newService.id}: ${err.message}`);
@@ -2249,6 +2250,102 @@ export default async function serviceRoutes(fastify, options) {
       return reply.code(500).send({
         error: 'Internal Server Error',
         message: 'Failed to reveal environment variable value',
+      });
+    }
+  });
+
+  /**
+   * PATCH /services/:id/state
+   * Start or stop a service
+   * Body: { state: 'running' | 'stopped' }
+   */
+  fastify.patch('/services/:id/state', {
+    schema: {
+      params: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', format: 'uuid' }
+        },
+        required: ['id']
+      },
+      body: {
+        type: 'object',
+        properties: {
+          state: { type: 'string', enum: ['running', 'stopped'] }
+        },
+        required: ['state']
+      }
+    }
+  }, async (request, reply) => {
+    const userId = request.user.id;
+    const serviceId = request.params.id;
+    const { state } = request.body;
+
+    // Verify service ownership
+    const ownershipCheck = await verifyServiceOwnership(serviceId, userId);
+    if (ownershipCheck.error) {
+      return reply.code(ownershipCheck.status).send({
+        error: ownershipCheck.status === 404 ? 'Not Found' : 'Forbidden',
+        message: ownershipCheck.error,
+      });
+    }
+
+    const { service } = ownershipCheck;
+    const namespace = computeNamespace(service.project_name);
+
+    try {
+      let currentReplicas = 0;
+      let targetReplicas = 0;
+      let deploymentExists = true;
+
+      // Get current deployment state
+      try {
+        const deployment = await getDeployment(namespace, service.name);
+        currentReplicas = deployment.spec?.replicas || 0;
+      } catch (getErr) {
+        // Deployment may not exist yet
+        if (getErr.status === 404) {
+          deploymentExists = false;
+        } else {
+          throw getErr;
+        }
+      }
+
+      // If deployment doesn't exist, we can't start/stop it
+      if (!deploymentExists) {
+        return reply.code(400).send({
+          error: 'Bad Request',
+          message: 'Service has not been deployed yet. Deploy it first before starting/stopping.',
+        });
+      }
+
+      if (state === 'stopped') {
+        // Scale to 0 replicas
+        targetReplicas = 0;
+        await scaleDeployment(namespace, service.name, 0);
+      } else {
+        // Scale to configured replicas (or 1 if not set)
+        targetReplicas = service.replicas || 1;
+        await scaleDeployment(namespace, service.name, targetReplicas);
+      }
+
+      fastify.log.info(`Service ${service.name} state changed to ${state}`, {
+        namespace,
+        previousReplicas: currentReplicas,
+        targetReplicas
+      });
+
+      return {
+        service: service.name,
+        state,
+        replicas: targetReplicas,
+        previousReplicas: currentReplicas
+      };
+    } catch (err) {
+      fastify.log.error(`Failed to change service state: ${err.message}`);
+      return reply.code(500).send({
+        error: 'Internal Server Error',
+        message: 'Failed to change service state',
       });
     }
   });

@@ -5,7 +5,7 @@ import { StatusIndicator, ProgressGauge } from '../components/StatusIndicator'
 import TerminalButton from '../components/TerminalButton'
 import TerminalSpinner from '../components/TerminalSpinner'
 import { useToast } from '../components/Toast'
-import { fetchProject } from '../api/projects'
+import { fetchProject, startProject, stopProject } from '../api/projects'
 import { deleteService } from '../api/services'
 import { ApiError } from '../api/utils'
 import { useWebSocket } from '../hooks/useWebSocket'
@@ -19,6 +19,8 @@ export function ProjectDetail({ projectId, onServiceClick, onNewService, onBack 
   const [copied, setCopied] = useState(null)
   const [showDeleteModal, setShowDeleteModal] = useState(null)
   const [deleting, setDeleting] = useState(false)
+  const [projectState, setProjectState] = useState('running') // 'running' or 'stopped'
+  const [changingState, setChangingState] = useState(false)
   // Track real-time service statuses from WebSocket
   const [serviceStatuses, setServiceStatuses] = useState({})
   const toast = useToast()
@@ -114,6 +116,31 @@ export function ProjectDetail({ projectId, onServiceClick, onNewService, onBack 
       toast.error(message)
     } finally {
       setDeleting(false)
+    }
+  }
+
+  const handleToggleProjectState = async () => {
+    if (changingState || !project?.services?.length) return
+
+    const newState = projectState === 'running' ? 'stopped' : 'running'
+    setChangingState(true)
+
+    try {
+      if (newState === 'stopped') {
+        await stopProject(projectId)
+        toast.success('All services stopped')
+      } else {
+        await startProject(projectId)
+        toast.success('All services started')
+      }
+      setProjectState(newState)
+      // Refresh to get updated service states
+      await loadProject()
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : `Failed to ${newState === 'stopped' ? 'stop' : 'start'} project`
+      toast.error(message)
+    } finally {
+      setChangingState(false)
     }
   }
 
@@ -472,6 +499,21 @@ export function ProjectDetail({ projectId, onServiceClick, onNewService, onBack 
             >
               [ ADD SERVICE ]
             </TerminalButton>
+            {project.services?.length > 0 && (
+              <TerminalButton
+                variant={projectState === 'running' ? 'danger' : 'primary'}
+                onClick={handleToggleProjectState}
+                disabled={changingState}
+                className="w-full justify-center"
+              >
+                {changingState
+                  ? '[ PROCESSING... ]'
+                  : projectState === 'running'
+                    ? '[ STOP ALL ]'
+                    : '[ START ALL ]'
+                }
+              </TerminalButton>
+            )}
             <TerminalButton
               variant="secondary"
               onClick={loadProject}

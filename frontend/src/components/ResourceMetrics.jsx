@@ -64,11 +64,32 @@ function PodMetricRow({ pod, isLast }) {
     return 'text-status-critical'
   }
 
+  // Get phase color
+  const getPhaseColor = (phase) => {
+    switch (phase) {
+      case 'Running': return 'text-terminal-green'
+      case 'Pending': return 'text-terminal-amber'
+      case 'Failed': return 'text-terminal-red'
+      case 'Succeeded': return 'text-terminal-cyan'
+      default: return 'text-terminal-muted'
+    }
+  }
+
   return (
     <div className={`py-2 ${!isLast ? 'border-b border-terminal-border' : ''}`}>
-      <div className="flex items-center gap-2 text-sm">
-        <span className="text-terminal-muted">Pod:</span>
-        <span className="text-terminal-cyan truncate max-w-[200px]">{pod.name}</span>
+      <div className="flex items-center justify-between gap-2 text-sm">
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="text-terminal-muted">Pod:</span>
+          <span className="text-terminal-cyan truncate max-w-[180px]">{pod.name}</span>
+        </div>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <span className={getPhaseColor(pod.phase)}>{pod.phase || 'Unknown'}</span>
+          {pod.restartCount > 0 && (
+            <span className="text-terminal-amber text-xs">
+              ({pod.restartCount} restart{pod.restartCount > 1 ? 's' : ''})
+            </span>
+          )}
+        </div>
       </div>
       <div className="flex gap-6 mt-1 text-xs">
         <span className={getStatusColorClass(cpuPercent)}>
@@ -79,6 +100,11 @@ function PodMetricRow({ pod, isLast }) {
           MEM: {pod.memory.usage}
           {memPercent !== null && ` (${memPercent}%)`}
         </span>
+        {pod.ready !== undefined && (
+          <span className={pod.ready ? 'text-terminal-green' : 'text-terminal-red'}>
+            {pod.ready ? 'Ready' : 'Not Ready'}
+          </span>
+        )}
       </div>
     </div>
   )
@@ -232,8 +258,20 @@ export function ResourceMetrics({ serviceId, fetchMetrics, refreshInterval = 500
 
       {metrics.pods.length > 0 && (
         <div className="border-t border-terminal-border pt-3 mt-3">
-          <div className="text-xs text-terminal-muted uppercase mb-2">
-            Pods ({metrics.aggregated.podCount})
+          <div className="flex justify-between items-center text-xs text-terminal-muted uppercase mb-2">
+            <span>Pods ({metrics.aggregated.podCount})</span>
+            <div className="flex gap-3">
+              {metrics.aggregated.ready !== undefined && (
+                <span className={metrics.aggregated.ready === metrics.aggregated.podCount ? 'text-terminal-green' : 'text-terminal-amber'}>
+                  {metrics.aggregated.ready}/{metrics.aggregated.podCount} Ready
+                </span>
+              )}
+              {metrics.aggregated.restarts > 0 && (
+                <span className="text-terminal-amber">
+                  {metrics.aggregated.restarts} restart{metrics.aggregated.restarts > 1 ? 's' : ''}
+                </span>
+              )}
+            </div>
           </div>
           {metrics.pods.map((pod, index) => (
             <PodMetricRow

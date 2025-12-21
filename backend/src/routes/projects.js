@@ -1,4 +1,4 @@
-import { createNamespace, deleteNamespace, createSecret } from '../services/kubernetes.js';
+import { createNamespace, deleteNamespace, createSecret, scaleDeployment, listDeployments } from '../services/kubernetes.js';
 import { deleteRepositoriesByNamespace } from '../services/harbor.js';
 
 // Harbor registry config - loaded from environment for pushing built images
@@ -33,8 +33,9 @@ function validateProjectName(name) {
   return { valid: true, name: trimmedName };
 }
 
-function computeNamespace(userHash, projectName) {
-  return `${userHash}-${projectName}`;
+function computeNamespace(projectName) {
+  // Namespace is just the project name (globally unique)
+  return projectName;
 }
 
 /**
@@ -118,7 +119,7 @@ export default async function projectRoutes(fastify, options) {
 
       const projects = result.rows.map((row) => ({
         ...row,
-        namespace: computeNamespace(request.user.hash, row.name),
+        namespace: computeNamespace(row.name),
       }));
 
       return { projects };
@@ -148,19 +149,19 @@ export default async function projectRoutes(fastify, options) {
     }
 
     const projectName = validation.name;
-    const namespace = computeNamespace(userHash, projectName);
+    const namespace = computeNamespace(projectName);
 
     try {
-      // Check if project name already exists for this user
+      // Check if project name already exists (globally unique)
       const existing = await fastify.db.query(
-        'SELECT id FROM projects WHERE user_id = $1 AND name = $2',
-        [userId, projectName]
+        'SELECT id FROM projects WHERE name = $1',
+        [projectName]
       );
 
       if (existing.rows.length > 0) {
         return reply.code(400).send({
           error: 'Bad Request',
-          message: 'A project with this name already exists',
+          message: 'This project name is already taken. Please choose a different name.',
         });
       }
 
@@ -272,7 +273,7 @@ export default async function projectRoutes(fastify, options) {
         [projectId]
       );
 
-      const namespace = computeNamespace(request.user.hash, project.name);
+      const namespace = computeNamespace(project.name);
 
       return {
         id: project.id,
@@ -322,7 +323,7 @@ export default async function projectRoutes(fastify, options) {
         });
       }
 
-      const namespace = computeNamespace(request.user.hash, project.name);
+      const namespace = computeNamespace(project.name);
 
       // Delete Harbor repositories (cleanup container images)
       try {
@@ -357,6 +358,106 @@ export default async function projectRoutes(fastify, options) {
       return reply.code(500).send({
         error: 'Internal Server Error',
         message: 'Failed to delete project',
+      });
+    }
+  });
+
+  /**
+   * PATCH /projects/:id/state
+   * Start or stop all services in a project
+   * Body: { state: 'running' | 'stopped' }
+   */
+  fastify.patch('/projects/:id/state', {
+    schema: {
+      params: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', format: 'uuid' }
+        },
+        required: ['id']
+      },
+      body: {
+        type: 'object',
+        properties: {
+          state: { type: 'string', enum: ['running', 'stopped'] }
+        },
+        required: ['state']
+      }
+    }
+  }, async (request, reply) => {
+    const userId = request.user.id;
+    const projectId = request.params.id;
+    const { state } = request.body;
+
+    try {
+      // Verify project exists and user owns it
+      const projectResult = await fastify.db.query(
+        'SELECT id, name, user_id FROM projects WHERE id = $1',
+        [projectId]
+      );
+
+      if (projectResult.rows.length === 0) {
+        return reply.code(404).send({
+          error: 'Not Found',
+          message: 'Project not found',
+        });
+      }
+
+      const project = projectResult.rows[0];
+
+      if (project.user_id !== userId) {
+        return reply.code(403).send({
+          error: 'Forbidden',
+          message: 'Access denied',
+        });
+      }
+
+      const namespace = computeNamespace(project.name);
+
+      // Get all services in this project
+      const servicesResult = await fastify.db.query(
+        'SELECT id, name, replicas FROM services WHERE project_id = $1',
+        [projectId]
+      );
+
+      const services = servicesResult.rows;
+      const results = [];
+
+      for (const service of services) {
+        try {
+          if (state === 'stopped') {
+            // Scale to 0 replicas
+            await scaleDeployment(namespace, service.name, 0);
+            results.push({ service: service.name, state: 'stopped', replicas: 0 });
+          } else {
+            // Scale to configured replicas (or 1 if not set)
+            const targetReplicas = service.replicas || 1;
+            await scaleDeployment(namespace, service.name, targetReplicas);
+            results.push({ service: service.name, state: 'running', replicas: targetReplicas });
+          }
+        } catch (scaleErr) {
+          // Handle deployment not found (service never deployed)
+          if (scaleErr.status === 404) {
+            results.push({ service: service.name, skipped: true, reason: 'Not deployed yet' });
+          } else {
+            fastify.log.warn(`Failed to ${state === 'stopped' ? 'stop' : 'start'} service ${service.name}: ${scaleErr.message}`);
+            results.push({ service: service.name, error: scaleErr.message });
+          }
+        }
+      }
+
+      fastify.log.info(`Project ${project.name} state changed to ${state}`, { results });
+
+      return {
+        project: project.name,
+        state,
+        services: results
+      };
+    } catch (err) {
+      fastify.log.error(`Failed to change project state: ${err.message}`);
+      return reply.code(500).send({
+        error: 'Internal Server Error',
+        message: 'Failed to change project state',
       });
     }
   });

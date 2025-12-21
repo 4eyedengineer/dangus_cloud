@@ -13,6 +13,7 @@ import webhookRoutes from './routes/webhooks.js';
 import githubRoutes from './routes/github.js';
 import domainRoutes from './routes/domains.js';
 import notificationRoutes from './routes/notifications.js';
+import { startMetricsCollection, stopMetricsCollection } from './services/metricsCollector.js';
 
 const fastify = Fastify({
   logger: true,
@@ -156,10 +157,25 @@ const start = async () => {
     const host = process.env.HOST || '0.0.0.0';
     await fastify.listen({ port, host });
     fastify.log.info(`Server listening on ${host}:${port}`);
+
+    // Start metrics collection loop
+    startMetricsCollection();
+    fastify.log.info('Metrics collection started');
   } catch (err) {
     fastify.log.error(err);
     process.exit(1);
   }
 };
+
+// Graceful shutdown
+const shutdown = async (signal) => {
+  fastify.log.info(`Received ${signal}, shutting down gracefully...`);
+  stopMetricsCollection();
+  await fastify.close();
+  process.exit(0);
+};
+
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));
 
 start();

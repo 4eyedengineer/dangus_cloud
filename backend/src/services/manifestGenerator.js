@@ -80,23 +80,15 @@ function loadTemplate(filename) {
 
 /**
  * Generate a Kubernetes Namespace manifest
- * @param {string} name - Full namespace name (e.g., 'a1b2c3-myapp')
+ * @param {string} name - Namespace name (project name, e.g., 'myproject')
  * @returns {object} Parsed Kubernetes manifest object
  */
 export function generateNamespaceManifest(name) {
-  // Extract userHash and projectName from namespace name
-  const parts = name.split('-');
-  if (parts.length < 2) {
-    throw new Error('Namespace name must be in format: userHash-projectName');
-  }
-  const userHash = parts[0];
-  const projectName = parts.slice(1).join('-');
-
+  // Namespace is just the project name now (globally unique)
   const template = loadTemplate('namespace.yaml.tpl');
   const yaml = interpolate(template, {
     namespace: name,
-    userHash,
-    projectName
+    projectName: name
   });
   return parse(yaml);
 }

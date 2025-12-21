@@ -561,3 +561,40 @@ export async function getPodEvents(namespace, labelSelector) {
     .sort((a, b) => new Date(b.lastTimestamp) - new Date(a.lastTimestamp))
     .slice(0, 20); // Return last 20 events
 }
+
+/**
+ * Scale a deployment to specified replicas
+ * @param {string} namespace - Kubernetes namespace
+ * @param {string} name - Deployment name
+ * @param {number} replicas - Number of replicas
+ * @returns {Promise<object>} Updated deployment
+ */
+export async function scaleDeployment(namespace, name, replicas) {
+  logger.info('Scaling deployment', { namespace, name, replicas });
+  return patchDeployment(namespace, name, {
+    spec: { replicas }
+  });
+}
+
+/**
+ * List all deployments in a namespace
+ * @param {string} namespace - Kubernetes namespace
+ * @returns {Promise<object>} List of deployments
+ */
+export async function listDeployments(namespace) {
+  return k8sRequest(
+    'GET',
+    `/apis/apps/v1/namespaces/${namespace}/deployments`
+  );
+}
+
+/**
+ * Get current replica count for a deployment
+ * @param {string} namespace - Kubernetes namespace
+ * @param {string} name - Deployment name
+ * @returns {Promise<number>} Current replica count
+ */
+export async function getDeploymentReplicas(namespace, name) {
+  const deployment = await getDeployment(namespace, name);
+  return deployment.spec?.replicas || 0;
+}
