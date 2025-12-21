@@ -34,6 +34,13 @@ case "${1:-help}" in
   db)
     psql -h 192.168.1.124 -U dangus -d dangus_cloud
     ;;
+  token)
+    echo "Generating new k3s token..."
+    TOKEN=$(kubectl create token dangus-backend -n dangus-cloud --duration=8760h)
+    echo "KUBERNETES_TOKEN=$TOKEN"
+    echo ""
+    echo "Add to .env file to enable k3s deployments"
+    ;;
   *)
     cat <<EOF
 Dangus Cloud Dev Commands:
@@ -47,10 +54,13 @@ Dangus Cloud Dev Commands:
   ./dev harbor    Run with Harbor production images
   ./dev pull      Pull latest Harbor images
   ./dev db        Connect to PostgreSQL
+  ./dev token     Generate new k3s service account token
 
 URLs:
   Frontend: http://192.168.1.124:5173
   Backend:  http://192.168.1.124:3001
+
+Note: Copy .env.example to .env and add KUBERNETES_TOKEN for k3s deployments
 EOF
     ;;
 esac

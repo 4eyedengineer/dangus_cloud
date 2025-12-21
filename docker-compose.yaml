@@ -41,6 +41,8 @@ services:
     volumes:
       - ./backend/src:/app/src
       - ./templates:/app/templates
+      # Mount k3s CA for API access
+      - ./k8s/tls/k3s-ca.crt:/var/run/secrets/kubernetes.io/serviceaccount/ca.crt:ro
     environment:
       - PORT=3001
       - HOST=0.0.0.0
@@ -53,11 +55,15 @@ services:
       - ENCRYPTION_KEY=${ENCRYPTION_KEY:-devdevdevdevdevdevdevdevdevdevde}
       - SESSION_SECRET=${SESSION_SECRET:-devsecretdevsecretdevsecretdevse}
       - COOKIE_DOMAIN=192.168.1.124
-      - BASE_DOMAIN=192.168.1.124
-      # These won't work in dev (no k8s), but prevent crashes
+      - BASE_DOMAIN=192.168.1.124.nip.io
+      # k3s API access (required for deployments)
+      - KUBERNETES_SERVICE_HOST=192.168.1.124
+      - KUBERNETES_SERVICE_PORT=6443
+      - KUBERNETES_TOKEN=${KUBERNETES_TOKEN:-}
+      # Harbor registry
       - HARBOR_REGISTRY=harbor.192.168.1.124.nip.io
-      - HARBOR_ROBOT_USER=placeholder
-      - HARBOR_ROBOT_PASSWORD=placeholder
+      - HARBOR_ROBOT_USER=${HARBOR_ROBOT_USER:-placeholder}
+      - HARBOR_ROBOT_PASSWORD=${HARBOR_ROBOT_PASSWORD:-placeholder}
     depends_on:
       postgres:
         condition: service_healthy
