@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { AsciiLogo } from './AsciiLogo'
 import { AsciiDivider } from './AsciiDivider'
 import { DigitalDebrisFill } from './DigitalDebris'
+import { StatusIndicator } from './StatusIndicator'
 import { useWebSocket } from '../hooks/useWebSocket'
 
 export function Layout({
