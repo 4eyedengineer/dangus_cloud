@@ -677,3 +677,71 @@ export async function deleteConfigMap(namespace, name) {
 export async function getConfigMap(namespace, name) {
   return k8sRequest('GET', `/api/v1/namespaces/${namespace}/configmaps/${name}`);
 }
+
+/**
+ * List all namespaces managed by Dangus Cloud
+ * @returns {Promise<Array<{name: string, createdAt: string}>>} List of managed namespaces
+ */
+export async function listManagedNamespaces() {
+  const result = await k8sRequest(
+    'GET',
+    '/api/v1/namespaces?labelSelector=app.kubernetes.io%2Fmanaged-by%3Ddangus-cloud'
+  );
+
+  return (result.items || []).map(ns => ({
+    name: ns.metadata.name,
+    createdAt: ns.metadata.creationTimestamp,
+    labels: ns.metadata.labels || {}
+  }));
+}
+
+/**
+ * Check if a namespace exists and is managed by Dangus Cloud
+ * @param {string} name - Namespace name
+ * @returns {Promise<{exists: boolean, managedByUs: boolean, namespace: object|null}>}
+ */
+export async function checkNamespaceStatus(name) {
+  try {
+    const ns = await getNamespace(name);
+    const managedByUs = ns.metadata?.labels?.['app.kubernetes.io/managed-by'] === 'dangus-cloud';
+    return { exists: true, managedByUs, namespace: ns };
+  } catch (error) {
+    if (error.status === 404) {
+      return { exists: false, managedByUs: false, namespace: null };
+    }
+    throw error;
+  }
+}
+
+/**
+ * Create namespace idempotently - reclaim orphaned namespaces if they exist
+ * @param {string} name - Namespace name
+ * @param {function} checkDbProject - Async function that returns true if a DB project exists for this namespace
+ * @returns {Promise<{created: boolean, reclaimed: boolean, namespace: object}>}
+ */
+export async function createNamespaceIdempotent(name, checkDbProject) {
+  const status = await checkNamespaceStatus(name);
+
+  if (!status.exists) {
+    // Namespace doesn't exist - create it
+    const namespace = await createNamespace(name);
+    return { created: true, reclaimed: false, namespace };
+  }
+
+  if (!status.managedByUs) {
+    // Namespace exists but not managed by us - can't touch it
+    throw new Error(`Namespace "${name}" exists but is not managed by Dangus Cloud`);
+  }
+
+  // Namespace exists and is managed by us - check if a project owns it
+  const hasDbProject = await checkDbProject(name);
+
+  if (hasDbProject) {
+    // Another project owns this namespace
+    throw new Error(`Namespace "${name}" is already in use by another project`);
+  }
+
+  // Orphaned namespace - reclaim it by returning existing
+  logger.info(`Reclaiming orphaned namespace: ${name}`);
+  return { created: false, reclaimed: true, namespace: status.namespace };
+}

@@ -1,4 +1,4 @@
-import { createNamespace, deleteNamespace, createSecret, scaleDeployment, listDeployments } from '../services/kubernetes.js';
+import { createNamespaceIdempotent, deleteNamespace, createSecret, scaleDeployment, listDeployments } from '../services/kubernetes.js';
 import { deleteRepositoriesByNamespace } from '../services/harbor.js';
 
 // Harbor registry config - loaded from environment for pushing built images
@@ -165,10 +165,23 @@ export default async function projectRoutes(fastify, options) {
         });
       }
 
-      // Create Kubernetes namespace
+      // Create Kubernetes namespace (idempotent - reclaims orphaned namespaces)
       try {
-        await createNamespace(namespace);
-        fastify.log.info(`Created Kubernetes namespace: ${namespace}`);
+        const checkDbProject = async (nsName) => {
+          const result = await fastify.db.query(
+            'SELECT id FROM projects WHERE name = $1',
+            [nsName]
+          );
+          return result.rows.length > 0;
+        };
+
+        const nsResult = await createNamespaceIdempotent(namespace, checkDbProject);
+
+        if (nsResult.reclaimed) {
+          fastify.log.info(`Reclaimed orphaned Kubernetes namespace: ${namespace}`);
+        } else {
+          fastify.log.info(`Created Kubernetes namespace: ${namespace}`);
+        }
 
         // Create registry secret for Kaniko builds
         await createRegistrySecret(namespace, fastify.log);
@@ -176,7 +189,7 @@ export default async function projectRoutes(fastify, options) {
         fastify.log.error(`Failed to create Kubernetes namespace: ${k8sErr.message}`);
         return reply.code(500).send({
           error: 'Internal Server Error',
-          message: 'Failed to create project namespace',
+          message: k8sErr.message.includes('exists') ? k8sErr.message : 'Failed to create project namespace',
         });
       }
 

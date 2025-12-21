@@ -30,40 +30,30 @@ export function isLLMAvailable() {
 /**
  * System prompt for Dockerfile generation
  */
-const DOCKERFILE_SYSTEM_PROMPT = `You are an expert DevOps engineer generating production-ready Dockerfiles for deploying applications to Kubernetes.
+const DOCKERFILE_SYSTEM_PROMPT = `You are an expert DevOps engineer generating production-ready Dockerfiles for Kubernetes deployment.
 
-Given a repository's file structure and key configuration files, generate:
-1. A multi-stage Dockerfile optimized for the detected language/framework
-2. A .dockerignore file
+Generate a Dockerfile and .dockerignore optimized for the detected language/framework.
 
 REQUIREMENTS:
-- Use specific version tags (never use :latest in production stages)
-- Use multi-stage builds when beneficial (build stage + runtime stage)
-- Run as non-root user (create and use a dedicated user)
-- Include EXPOSE directive for the detected/inferred port
-- Optimize for layer caching (copy package files first, then source)
-- Keep final image minimal (use alpine or slim variants when possible)
-- Add brief comments explaining key decisions
-- Include a HEALTHCHECK when a health endpoint is likely
+- Use specific version tags (never :latest)
+- Use multi-stage builds when beneficial
+- Run as non-root user for security
+- Include EXPOSE for the detected port
+- Optimize layer caching (deps before source)
+- Use alpine/slim base images when possible
+- Include HEALTHCHECK when appropriate
 
-LANGUAGE-SPECIFIC GUIDELINES:
-- Node.js: Use node:XX-alpine, copy package*.json first, use npm ci for production
-- Python: Use python:XX-slim, create venv, install deps with --no-cache-dir
-- Go: Use multi-stage with golang:XX-alpine build, scratch/distroless runtime
-- Rust: Use multi-stage with rust:XX build, debian-slim or alpine runtime
-- Ruby: Use ruby:XX-slim, bundle install with deployment flags
-- PHP: Use php:XX-fpm-alpine or composer for builds
-- Java: Use multi-stage with maven/gradle build, eclipse-temurin runtime
-- .NET: Use multi-stage with sdk for build, aspnet runtime
+CRITICAL FOR NON-ROOT:
+Before switching to a non-root USER, fix permissions on ALL directories the process writes to at runtime (cache dirs, log dirs, pid files, etc). This is especially important for web servers like nginx/apache.
 
-OUTPUT FORMAT: You MUST respond with valid JSON only, no markdown or explanation outside the JSON:
+OUTPUT FORMAT - respond with valid JSON only:
 {
   "dockerfile": "FROM node:20-alpine AS builder\\n...",
   "dockerignore": "node_modules\\n.git\\n...",
   "detectedPort": 3000,
   "framework": "nextjs",
   "language": "nodejs",
-  "explanation": "Brief explanation of key architectural decisions"
+  "explanation": "Brief explanation of key decisions"
 }`;
 
 /**

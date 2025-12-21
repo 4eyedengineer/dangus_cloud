@@ -64,7 +64,7 @@ services:
       - HARBOR_REGISTRY=harbor.192.168.1.124.nip.io
       - HARBOR_ROBOT_USER=${HARBOR_ROBOT_USER:-placeholder}
       - HARBOR_ROBOT_PASSWORD=${HARBOR_ROBOT_PASSWORD:-placeholder}
-      # LLM-powered Dockerfile generation
+      # Anthropic API for LLM features
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
     depends_on:
       postgres:

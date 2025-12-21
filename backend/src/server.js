@@ -14,7 +14,9 @@ import githubRoutes from './routes/github.js';
 import domainRoutes from './routes/domains.js';
 import notificationRoutes from './routes/notifications.js';
 import dockerfileRoutes from './routes/dockerfile.js';
+import adminRoutes from './routes/admin.js';
 import { startMetricsCollection, stopMetricsCollection } from './services/metricsCollector.js';
+import { runStartupHealthCheck } from './services/reconciliation.js';
 
 const fastify = Fastify({
   logger: true,
@@ -119,9 +121,14 @@ fastify.register(notificationRoutes);
 // Register Dockerfile generation routes
 fastify.register(dockerfileRoutes);
 
+// Register admin routes (health, reconciliation)
+fastify.register(adminRoutes);
+
 // Routes that do not require authentication
 const publicRoutes = [
   { method: 'GET', url: '/health' },
+  { method: 'GET', url: '/admin/health' },  // System health - useful for monitoring
+  { method: 'GET', url: '/admin/stats' },   // Basic stats - useful for monitoring
   { method: 'GET', url: '/auth/github' },
   { method: 'GET', url: '/auth/github/callback' },
   { method: 'GET', url: '/ws/stats' },
@@ -164,6 +171,15 @@ const start = async () => {
     // Start metrics collection loop
     startMetricsCollection();
     fastify.log.info('Metrics collection started');
+
+    // Run startup health check (non-blocking, logs discrepancies)
+    setImmediate(async () => {
+      try {
+        await runStartupHealthCheck(fastify.db);
+      } catch (err) {
+        fastify.log.error('Startup health check error', { error: err.message });
+      }
+    });
   } catch (err) {
     fastify.log.error(err);
     process.exit(1);
