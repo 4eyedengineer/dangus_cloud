@@ -16,8 +16,7 @@ import {
   ServiceDetail,
   NewServiceForm,
   NewProjectWizard,
-  Settings,
-  ComponentTest
+  Settings
 } from './pages'
 import { WebSocketProvider } from './context/WebSocketContext'
 import { getCurrentUser, logout, getLoginUrl } from './api/auth'
@@ -304,7 +303,6 @@ function AppContent() {
         <Route path="/projects/:projectId/services/new" element={<NewServicePage />} />
         <Route path="/services/:serviceId" element={<ServiceDetailPage />} />
         <Route path="/settings" element={<SettingsPage user={user} onLogout={() => { setUser(null); navigate('/'); }} />} />
-        <Route path="/test-components" element={<ComponentTest />} />
       </Routes>
     </Layout>
   )
