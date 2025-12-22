@@ -4,6 +4,12 @@ Self-hosted PaaS for deploying containerized apps from GitHub repos (like Railwa
 
 **Goal:** Make it dead simple to go from GitHub repo to running service. Minimize clicks, hide complexity, sensible defaults. If a user has to read docs to deploy, we've failed.
 
+Always plan to maximize concurrent tool/agent use.
+
+Reaach for code-reviewer,  playwright-ux-tester, and llm-philosophy-architect agents to deligate and lean on.
+
+Always respond as concisely as possible, keeping critical points.
+
 ## Stack
 
 React 18 + Vite | Fastify 4 + PostgreSQL 15 | k3s + Traefik | Harbor | ArgoCD | GitHub Actions (ARC) | Claude Haiku 4.5 (Dockerfile generation)
@@ -30,7 +36,7 @@ tilt up --stream  # k3s dev alternative
 
 ## UI Rules
 
-IMPORTANT: Follow the retro terminal aesthetic. See `terminal-ui-design-philosophy.md`.
+IMPORTANT: Follow the retro terminal aesthetic. See `terminal-ui-design-philosophy-v2.md`.
 - Use `Terminal*` components from `frontend/src/components/`
 - Monospace fonts only (`font-mono`)
 - Box-drawing characters for borders: `─ │ ┌ ┐ └ ┘ ├ ┤`

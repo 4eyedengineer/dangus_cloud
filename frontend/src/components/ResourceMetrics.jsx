@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import TerminalSpinner from './TerminalSpinner'
-import { AsciiBox } from './AsciiBox'
+import { TerminalCard } from './TerminalCard'
 import { SegmentedGauge } from './SegmentedGauge'
 import { useWebSocket } from '../hooks/useWebSocket'
 
@@ -202,34 +202,34 @@ export function ResourceMetrics({ serviceId, fetchMetrics, refreshInterval = 500
 
   if (loading) {
     return (
-      <AsciiBox title="Resource Usage" variant="cyan">
+      <TerminalCard title="Resource Usage" variant="cyan">
         <div className="flex items-center justify-center py-4">
           <TerminalSpinner color="cyan" />
           <span className="ml-2 text-terminal-muted font-mono text-sm">Loading metrics...</span>
         </div>
-      </AsciiBox>
+      </TerminalCard>
     )
   }
 
   if (error) {
     return (
-      <AsciiBox title="Resource Usage" variant="red">
+      <TerminalCard title="Resource Usage" variant="red">
         <div className="text-center py-4">
           <p className="font-mono text-terminal-red text-sm">! {error}</p>
         </div>
-      </AsciiBox>
+      </TerminalCard>
     )
   }
 
   if (!metrics || !metrics.available) {
     return (
-      <AsciiBox title="Resource Usage" variant="cyan">
+      <TerminalCard title="Resource Usage" variant="cyan">
         <div className="text-center py-4">
           <p className="font-mono text-terminal-muted text-sm">
             {metrics?.message || 'Metrics not available. Service may not be running.'}
           </p>
         </div>
-      </AsciiBox>
+      </TerminalCard>
     )
   }
 
@@ -240,7 +240,7 @@ export function ResourceMetrics({ serviceId, fetchMetrics, refreshInterval = 500
     : null
 
   return (
-    <AsciiBox title="Resource Usage.." variant="cyan">
+    <TerminalCard title="Resource Usage" variant="cyan">
       <div className="grid grid-cols-2 gap-4 mb-4">
         <MetricGaugeArc
           label="CPU"
@@ -293,7 +293,7 @@ export function ResourceMetrics({ serviceId, fetchMetrics, refreshInterval = 500
           <span>Auto-refreshing every {refreshInterval / 1000}s</span>
         )}
       </div>
-    </AsciiBox>
+    </TerminalCard>
   )
 }
 

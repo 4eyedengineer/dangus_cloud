@@ -1,6 +1,5 @@
 import { useState } from 'react'
-import { AsciiBox } from '../components/AsciiBox'
-import { AsciiDivider } from '../components/AsciiDivider'
+import { TerminalCard, TerminalDivider } from '../components/TerminalCard'
 import TerminalButton from '../components/TerminalButton'
 import TerminalInput from '../components/TerminalInput'
 import TerminalSelect from '../components/TerminalSelect'
@@ -144,11 +143,11 @@ export function NewServiceForm({ projectId, onSubmit, onCancel }) {
         </h1>
       </div>
 
-      <AsciiDivider variant="double" color="green" />
+      <TerminalDivider variant="double" color="green" />
 
       <form onSubmit={handleSubmit} className="space-y-6">
         {/* Basic Configuration */}
-        <AsciiBox title="Basic Configuration" variant="green">
+        <TerminalCard title="Basic Configuration" variant="green">
           <div className="space-y-4">
             {/* Service Name */}
             <div>
@@ -228,10 +227,10 @@ export function NewServiceForm({ projectId, onSubmit, onCancel }) {
               )}
             </div>
           </div>
-        </AsciiBox>
+        </TerminalCard>
 
         {/* Resource Allocation */}
-        <AsciiBox title="Resource Allocation" variant="amber">
+        <TerminalCard title="Resource Allocation" variant="amber">
           <div className="space-y-6">
             {/* Replicas Slider */}
             <TerminalSlider
@@ -285,10 +284,10 @@ export function NewServiceForm({ projectId, onSubmit, onCancel }) {
               />
             </div>
           </div>
-        </AsciiBox>
+        </TerminalCard>
 
         {/* Health Check */}
-        <AsciiBox title="Health Check" variant="cyan">
+        <TerminalCard title="Health Check" variant="cyan">
           <div>
             <label className="block font-mono text-xs text-terminal-muted uppercase mb-2">
               Health Check Path
@@ -301,10 +300,10 @@ export function NewServiceForm({ projectId, onSubmit, onCancel }) {
               className="w-full"
             />
           </div>
-        </AsciiBox>
+        </TerminalCard>
 
         {/* Environment Variables */}
-        <AsciiBox title="Environment Variables" variant="green">
+        <TerminalCard title="Environment Variables" variant="green">
           <div className="space-y-3">
             {formData.envVars.map((env, index) => (
               <div key={index} className="flex items-center gap-2">
@@ -340,10 +339,10 @@ export function NewServiceForm({ projectId, onSubmit, onCancel }) {
               + Add Variable
             </button>
           </div>
-        </AsciiBox>
+        </TerminalCard>
 
         {/* Form Actions */}
-        <AsciiDivider variant="single" color="muted" />
+        <TerminalDivider variant="single" color="muted" />
 
         <div className="flex items-center justify-between">
           <div className="font-mono text-xs text-terminal-muted">

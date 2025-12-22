@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react'
-import { AsciiBox } from '../components/AsciiBox'
-import { AsciiDivider, AsciiSectionDivider } from '../components/AsciiDivider'
+import { TerminalCard, TerminalDivider, TerminalSection, TerminalModal } from '../components/TerminalCard'
 import TerminalButton from '../components/TerminalButton'
 import TerminalInput from '../components/TerminalInput'
 import TerminalToggle from '../components/TerminalToggle'
@@ -229,13 +228,13 @@ export function Settings({ user, onLogout }) {
         </p>
       </div>
 
-      <AsciiDivider variant="double" color="green" />
+      <TerminalDivider variant="double" color="green" />
 
       {/* Account Section */}
-      <AsciiSectionDivider title="ACCOUNT" color="amber" />
+      <TerminalSection title="ACCOUNT" color="amber" />
 
       <div className="mt-4 space-y-4">
-        <AsciiBox title="GitHub Connection" variant="green">
+        <TerminalCard title="GitHub Connection" variant="green">
           <div className="space-y-4">
             <div className="space-y-2">
               <div className="flex items-center gap-2">
@@ -258,9 +257,9 @@ export function Settings({ user, onLogout }) {
               </TerminalButton>
             </div>
           </div>
-        </AsciiBox>
+        </TerminalCard>
 
-        <AsciiBox title="Session Management" variant="amber">
+        <TerminalCard title="Session Management" variant="amber">
           <div className="space-y-3">
             <p className="font-mono text-xs text-terminal-muted">
               Logout from all devices and sessions.
@@ -269,16 +268,16 @@ export function Settings({ user, onLogout }) {
               [ LOGOUT ALL DEVICES ]
             </TerminalButton>
           </div>
-        </AsciiBox>
+        </TerminalCard>
       </div>
 
-      <AsciiDivider variant="single" color="muted" className="my-6" />
+      <TerminalDivider variant="single" color="muted" className="my-6" />
 
       {/* Preferences Section */}
-      <AsciiSectionDivider title="PREFERENCES" color="amber" />
+      <TerminalSection title="PREFERENCES" color="amber" />
 
       <div className="mt-4 space-y-4">
-        <AsciiBox title="Default Settings" variant="green">
+        <TerminalCard title="Default Settings" variant="green">
           <div className="space-y-4">
             <div>
               <label className="block font-mono text-xs text-terminal-muted uppercase mb-2">
@@ -310,9 +309,9 @@ export function Settings({ user, onLogout }) {
               </p>
             </div>
           </div>
-        </AsciiBox>
+        </TerminalCard>
 
-        <AsciiBox title="Deployment Notifications" variant="green">
+        <TerminalCard title="Deployment Notifications" variant="green">
           {loadingNotifications ? (
             <p className="font-mono text-xs text-terminal-muted">Loading...</p>
           ) : (
@@ -455,11 +454,11 @@ export function Settings({ user, onLogout }) {
               </div>
             </div>
           )}
-        </AsciiBox>
+        </TerminalCard>
 
         {/* Notification History */}
         {notificationHistory.length > 0 && (
-          <AsciiBox title="Recent Notifications" variant="amber">
+          <TerminalCard title="Recent Notifications" variant="amber">
             <div className="space-y-2">
               {notificationHistory.map((notification) => (
                 <div
@@ -485,14 +484,14 @@ export function Settings({ user, onLogout }) {
                 </div>
               ))}
             </div>
-          </AsciiBox>
+          </TerminalCard>
         )}
       </div>
 
-      <AsciiDivider variant="single" color="muted" className="my-6" />
+      <TerminalDivider variant="single" color="muted" className="my-6" />
 
       {/* Danger Zone */}
-      <AsciiSectionDivider title="DANGER ZONE" color="red" />
+      <TerminalSection title="DANGER ZONE" color="red" />
 
       <div className="mt-4">
         <div className="border border-terminal-red p-4 bg-terminal-bg-secondary">
@@ -528,87 +527,67 @@ export function Settings({ user, onLogout }) {
 
       {/* Logout All Modal */}
       {showLogoutAllModal && (
-        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
-          <div className="w-full max-w-md mx-4">
-            <div className="font-mono whitespace-pre text-terminal-amber select-none">
-              +-- LOGOUT ALL DEVICES ---------------------+
-            </div>
-            <div className="border-l border-r border-terminal-amber bg-terminal-bg-secondary px-6 py-6">
-              <p className="font-mono text-terminal-primary mb-2">
-                Logout from all devices?
-              </p>
-              <p className="font-mono text-xs text-terminal-muted mb-6">
-                This will end all active sessions including this one.
-              </p>
-              <div className="flex justify-end gap-3">
-                <TerminalButton
-                  variant="secondary"
-                  onClick={() => setShowLogoutAllModal(false)}
-                >
-                  [ CANCEL ]
-                </TerminalButton>
-                <TerminalButton
-                  variant="primary"
-                  onClick={handleLogoutAll}
-                >
-                  [ CONFIRM ]
-                </TerminalButton>
-              </div>
-            </div>
-            <div className="font-mono whitespace-pre text-terminal-amber select-none">
-              +--------------------------------------------+
-            </div>
+        <TerminalModal title="LOGOUT ALL DEVICES" variant="amber">
+          <p className="font-mono text-terminal-primary mb-2">
+            Logout from all devices?
+          </p>
+          <p className="font-mono text-xs text-terminal-muted mb-6">
+            This will end all active sessions including this one.
+          </p>
+          <div className="flex justify-end gap-3">
+            <TerminalButton
+              variant="secondary"
+              onClick={() => setShowLogoutAllModal(false)}
+            >
+              [ CANCEL ]
+            </TerminalButton>
+            <TerminalButton
+              variant="primary"
+              onClick={handleLogoutAll}
+            >
+              [ CONFIRM ]
+            </TerminalButton>
           </div>
-        </div>
+        </TerminalModal>
       )}
 
       {/* Delete Account Modal */}
       {showDeleteModal && (
-        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
-          <div className="w-full max-w-md mx-4">
-            <div className="font-mono whitespace-pre text-terminal-red select-none">
-              +-- DELETE ACCOUNT -------------------------+
-            </div>
-            <div className="border-l border-r border-terminal-red bg-terminal-bg-secondary px-6 py-6">
-              <p className="font-mono text-terminal-red mb-2">
-                ! WARNING: This action cannot be undone
-              </p>
-              <p className="font-mono text-xs text-terminal-muted mb-4">
-                All your projects, services, and data will be permanently deleted.
-              </p>
-              <label className="block font-mono text-xs text-terminal-muted uppercase mb-2">
-                Type DELETE to confirm
-              </label>
-              <TerminalInput
-                value={deleteConfirmText}
-                onChange={(e) => setDeleteConfirmText(e.target.value)}
-                placeholder="DELETE"
-                className="w-full mb-4"
-              />
-              <div className="flex justify-end gap-3">
-                <TerminalButton
-                  variant="secondary"
-                  onClick={() => {
-                    setShowDeleteModal(false)
-                    setDeleteConfirmText('')
-                  }}
-                >
-                  [ CANCEL ]
-                </TerminalButton>
-                <TerminalButton
-                  variant="danger"
-                  onClick={handleDeleteAccount}
-                  disabled={deleteConfirmText !== 'DELETE'}
-                >
-                  [ DELETE FOREVER ]
-                </TerminalButton>
-              </div>
-            </div>
-            <div className="font-mono whitespace-pre text-terminal-red select-none">
-              +--------------------------------------------+
-            </div>
+        <TerminalModal title="DELETE ACCOUNT" variant="red">
+          <p className="font-mono text-terminal-red mb-2">
+            ! WARNING: This action cannot be undone
+          </p>
+          <p className="font-mono text-xs text-terminal-muted mb-4">
+            All your projects, services, and data will be permanently deleted.
+          </p>
+          <label className="block font-mono text-xs text-terminal-muted uppercase mb-2">
+            Type DELETE to confirm
+          </label>
+          <TerminalInput
+            value={deleteConfirmText}
+            onChange={(e) => setDeleteConfirmText(e.target.value)}
+            placeholder="DELETE"
+            className="w-full mb-4"
+          />
+          <div className="flex justify-end gap-3">
+            <TerminalButton
+              variant="secondary"
+              onClick={() => {
+                setShowDeleteModal(false)
+                setDeleteConfirmText('')
+              }}
+            >
+              [ CANCEL ]
+            </TerminalButton>
+            <TerminalButton
+              variant="danger"
+              onClick={handleDeleteAccount}
+              disabled={deleteConfirmText !== 'DELETE'}
+            >
+              [ DELETE FOREVER ]
+            </TerminalButton>
           </div>
-        </div>
+        </TerminalModal>
       )}
     </div>
   )

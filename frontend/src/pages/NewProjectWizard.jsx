@@ -1,6 +1,5 @@
 import { useState } from 'react'
-import { AsciiBox } from '../components/AsciiBox'
-import { AsciiDivider } from '../components/AsciiDivider'
+import { TerminalCard, TerminalDivider } from '../components/TerminalCard'
 import { WizardStepIndicator, CompactStepIndicator } from '../components/WizardStepIndicator'
 import { RepoSelector } from '../components/RepoSelector'
 import { ServiceTable } from '../components/ServiceTable'
@@ -297,7 +296,7 @@ export function NewProjectWizard({ onComplete, onCancel }) {
 
   // Render steps
   const renderNameStep = () => (
-    <AsciiBox title="PROJECT NAME" variant="green">
+    <TerminalCard title="PROJECT NAME" variant="green">
       <form onSubmit={handleNameSubmit} className="space-y-4">
         <div>
           <label className="block font-mono text-xs text-terminal-muted uppercase mb-2">
@@ -333,7 +332,7 @@ export function NewProjectWizard({ onComplete, onCancel }) {
           </TerminalButton>
         </div>
       </form>
-    </AsciiBox>
+    </TerminalCard>
   )
 
   const renderSourceStep = () => (
@@ -399,12 +398,12 @@ export function NewProjectWizard({ onComplete, onCancel }) {
         </div>
       ) : (
         <>
-          <AsciiBox title="SELECT REPOSITORY" variant="cyan">
+          <TerminalCard title="SELECT REPOSITORY" variant="cyan">
             <RepoSelector
               onSelect={handleRepoSelect}
               onCancel={handleBack}
             />
-          </AsciiBox>
+          </TerminalCard>
         </>
       )}
     </div>
@@ -413,7 +412,7 @@ export function NewProjectWizard({ onComplete, onCancel }) {
   const renderReviewStep = () => (
     <div className="space-y-4">
       {/* Repository Info */}
-      <AsciiBox title="REPOSITORY" variant="cyan">
+      <TerminalCard title="REPOSITORY" variant="cyan">
         <div className="flex items-center justify-between">
           <div>
             <div className="text-terminal-primary">{selectedRepo?.fullName}</div>
@@ -437,11 +436,11 @@ export function NewProjectWizard({ onComplete, onCancel }) {
             [ CHANGE ]
           </TerminalButton>
         </div>
-      </AsciiBox>
+      </TerminalCard>
 
       {/* AI-Generated Dockerfile Info */}
       {generatedInfo && (
-        <AsciiBox title="AI GENERATED DOCKERFILE" variant="magenta">
+        <TerminalCard title="AI GENERATED DOCKERFILE" variant="cyan">
           <div className="font-mono text-sm space-y-2">
             <div className="flex justify-between">
               <span className="text-terminal-muted">LANGUAGE:</span>
@@ -461,16 +460,16 @@ export function NewProjectWizard({ onComplete, onCancel }) {
               </div>
             )}
           </div>
-        </AsciiBox>
+        </TerminalCard>
       )}
 
       {/* Services Table */}
-      <AsciiBox title={generatedInfo ? "SERVICE (AI GENERATED)" : "DETECTED SERVICES"} variant="green">
+      <TerminalCard title={generatedInfo ? "SERVICE (AI GENERATED)" : "DETECTED SERVICES"} variant="green">
         <ServiceTable
           services={services}
           onChange={setServices}
         />
-      </AsciiBox>
+      </TerminalCard>
 
       {/* Actions */}
       <div className="flex justify-between">
@@ -503,7 +502,7 @@ export function NewProjectWizard({ onComplete, onCancel }) {
         </h1>
       </div>
 
-      <AsciiDivider variant="double" color="green" />
+      <TerminalDivider variant="double" color="green" />
 
       {/* Step Indicator */}
       <WizardStepIndicator
@@ -514,9 +513,9 @@ export function NewProjectWizard({ onComplete, onCancel }) {
 
       {/* Error Display */}
       {error && (
-        <AsciiBox variant="red" title="ERROR">
+        <TerminalCard variant="red" title="ERROR">
           <p className="font-mono text-terminal-red">{error}</p>
-        </AsciiBox>
+        </TerminalCard>
       )}
 
       {/* Step Content */}

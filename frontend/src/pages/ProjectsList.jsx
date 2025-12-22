@@ -1,6 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
-import { AsciiBox } from '../components/AsciiBox'
-import { AsciiDivider } from '../components/AsciiDivider'
+import { TerminalCard, TerminalDivider, TerminalModal } from '../components/TerminalCard'
 import { StatusIndicator, StatusBar } from '../components/StatusIndicator'
 import TerminalButton from '../components/TerminalButton'
 import TerminalInput from '../components/TerminalInput'
@@ -247,7 +246,7 @@ export function ProjectsList({ onProjectClick, onNewProject }) {
         className="mb-4"
       />
 
-      <AsciiDivider variant="double" color="green" />
+      <TerminalDivider variant="double" color="green" />
 
       {/* Search and Filters */}
       <div className="flex flex-col lg:flex-row gap-4">
@@ -358,111 +357,91 @@ export function ProjectsList({ onProjectClick, onNewProject }) {
       </div>
 
       {/* Quick Stats */}
-      <AsciiDivider variant="single" color="muted" className="my-6" />
+      <TerminalDivider variant="single" color="muted" className="my-6" />
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <AsciiBox title="Total Services" variant="green">
+        <TerminalCard title="Total Services" variant="green">
           <div className="text-center">
             <span className="font-mono text-3xl text-terminal-primary text-glow-green">
               {projects.reduce((acc, p) => acc + (p.service_count || 0), 0)}
             </span>
             <p className="font-mono text-xs text-terminal-muted mt-1">ACTIVE SERVICES</p>
           </div>
-        </AsciiBox>
+        </TerminalCard>
 
-        <AsciiBox title="Active Projects" variant="amber">
+        <TerminalCard title="Active Projects" variant="amber">
           <div className="text-center">
             <span className="font-mono text-3xl text-terminal-secondary text-glow-amber">
               {projects.filter(p => !p.archived && p.service_count > 0).length}
             </span>
             <p className="font-mono text-xs text-terminal-muted mt-1">WITH SERVICES</p>
           </div>
-        </AsciiBox>
+        </TerminalCard>
 
-        <AsciiBox title="Total Projects" variant="green">
+        <TerminalCard title="Total Projects" variant="green">
           <div className="text-center">
             <span className="font-mono text-3xl text-terminal-primary text-glow-green">
               {projects.length}
             </span>
             <p className="font-mono text-xs text-terminal-muted mt-1">PROJECTS</p>
           </div>
-        </AsciiBox>
+        </TerminalCard>
       </div>
 
       {/* Delete Confirmation Modal */}
       {showDeleteModal && (
-        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
-          <div className="w-full max-w-md mx-4">
-            <div className="font-mono whitespace-pre text-terminal-red select-none">
-              +-- CONFIRM DELETE -------------------------+
-            </div>
-            <div className="border-l border-r border-terminal-red bg-terminal-bg-secondary px-6 py-6">
-              <p className="font-mono text-terminal-primary mb-2">
-                Delete project "{showDeleteModal.name}"?
-              </p>
-              <p className="font-mono text-xs text-terminal-muted mb-6">
-                This will delete all services and deployments. This action cannot be undone.
-              </p>
-              <div className="flex justify-end gap-3">
-                <TerminalButton
-                  variant="secondary"
-                  onClick={() => setShowDeleteModal(null)}
-                  disabled={deleting}
-                >
-                  [ CANCEL ]
-                </TerminalButton>
-                <TerminalButton
-                  variant="danger"
-                  onClick={() => handleDeleteProject(showDeleteModal)}
-                  disabled={deleting}
-                >
-                  {deleting ? '[ DELETING... ]' : '[ DELETE ]'}
-                </TerminalButton>
-              </div>
-            </div>
-            <div className="font-mono whitespace-pre text-terminal-red select-none">
-              +--------------------------------------------+
-            </div>
+        <TerminalModal title="CONFIRM DELETE" variant="red">
+          <p className="font-mono text-terminal-primary mb-2">
+            Delete project "{showDeleteModal.name}"?
+          </p>
+          <p className="font-mono text-xs text-terminal-muted mb-6">
+            This will delete all services and deployments. This action cannot be undone.
+          </p>
+          <div className="flex justify-end gap-3">
+            <TerminalButton
+              variant="secondary"
+              onClick={() => setShowDeleteModal(null)}
+              disabled={deleting}
+            >
+              [ CANCEL ]
+            </TerminalButton>
+            <TerminalButton
+              variant="danger"
+              onClick={() => handleDeleteProject(showDeleteModal)}
+              disabled={deleting}
+            >
+              {deleting ? '[ DELETING... ]' : '[ DELETE ]'}
+            </TerminalButton>
           </div>
-        </div>
+        </TerminalModal>
       )}
 
       {/* Bulk Delete Modal */}
       {showBulkDeleteModal && (
-        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
-          <div className="w-full max-w-md mx-4">
-            <div className="font-mono whitespace-pre text-terminal-red select-none">
-              +-- CONFIRM BULK DELETE --------------------+
-            </div>
-            <div className="border-l border-r border-terminal-red bg-terminal-bg-secondary px-6 py-6">
-              <p className="font-mono text-terminal-primary mb-2">
-                Delete {selectedProjects.size} project(s)?
-              </p>
-              <p className="font-mono text-xs text-terminal-muted mb-6">
-                This will delete all services and deployments for these projects. This action cannot be undone.
-              </p>
-              <div className="flex justify-end gap-3">
-                <TerminalButton
-                  variant="secondary"
-                  onClick={() => setShowBulkDeleteModal(false)}
-                  disabled={deleting}
-                >
-                  [ CANCEL ]
-                </TerminalButton>
-                <TerminalButton
-                  variant="danger"
-                  onClick={handleBulkDelete}
-                  disabled={deleting}
-                >
-                  {deleting ? '[ DELETING... ]' : '[ DELETE ALL ]'}
-                </TerminalButton>
-              </div>
-            </div>
-            <div className="font-mono whitespace-pre text-terminal-red select-none">
-              +--------------------------------------------+
-            </div>
+        <TerminalModal title="CONFIRM BULK DELETE" variant="red">
+          <p className="font-mono text-terminal-primary mb-2">
+            Delete {selectedProjects.size} project(s)?
+          </p>
+          <p className="font-mono text-xs text-terminal-muted mb-6">
+            This will delete all services and deployments for these projects. This action cannot be undone.
+          </p>
+          <div className="flex justify-end gap-3">
+            <TerminalButton
+              variant="secondary"
+              onClick={() => setShowBulkDeleteModal(false)}
+              disabled={deleting}
+            >
+              [ CANCEL ]
+            </TerminalButton>
+            <TerminalButton
+              variant="danger"
+              onClick={handleBulkDelete}
+              disabled={deleting}
+            >
+              {deleting ? '[ DELETING... ]' : '[ DELETE ALL ]'}
+            </TerminalButton>
           </div>
-        </div>
+        </TerminalModal>
       )}
     </div>
   )

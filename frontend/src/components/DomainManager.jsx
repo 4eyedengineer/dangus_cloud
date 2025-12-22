@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { AsciiBox } from './AsciiBox'
+import { TerminalCard } from './TerminalCard'
 import TerminalButton from './TerminalButton'
 import TerminalInput from './TerminalInput'
 import { useToast } from './Toast'
@@ -10,7 +10,6 @@ import { useWebSocket } from '../hooks/useWebSocket'
 export function DomainManager({ serviceId }) {
   const [domains, setDomains] = useState([])
   const [loading, setLoading] = useState(true)
-  const [collapsed, setCollapsed] = useState(false)
 
   const [showAddModal, setShowAddModal] = useState(false)
   const [newDomain, setNewDomain] = useState('')
@@ -199,12 +198,7 @@ export function DomainManager({ serviceId }) {
   }
 
   return (
-    <AsciiBox
-      title="CUSTOM DOMAINS"
-      collapsible
-      collapsed={collapsed}
-      onToggle={() => setCollapsed(!collapsed)}
-    >
+    <TerminalCard title="CUSTOM DOMAINS" variant="cyan">
       {loading ? (
         <div className="text-terminal-muted">Loading domains...</div>
       ) : (
@@ -369,6 +363,6 @@ export function DomainManager({ serviceId }) {
           </div>
         </div>
       )}
-    </AsciiBox>
+    </TerminalCard>
   )
 }

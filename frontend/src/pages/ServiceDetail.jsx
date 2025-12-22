@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { AsciiBox } from '../components/AsciiBox'
-import { AsciiDivider, AsciiSectionDivider } from '../components/AsciiDivider'
+import { TerminalCard, TerminalDivider, TerminalSection, TerminalModal } from '../components/TerminalCard'
 import { StatusIndicator } from '../components/StatusIndicator'
 import TerminalButton from '../components/TerminalButton'
 import TerminalInput from '../components/TerminalInput'
@@ -662,7 +661,7 @@ export function ServiceDetail({ serviceId, onBack }) {
         </div>
       </div>
 
-      <AsciiDivider variant="double" color="green" />
+      <TerminalDivider variant="double" color="green" />
 
       {/* Port Mismatch Warning Banner */}
       {service.port_mismatch && service.detected_port && (
@@ -696,7 +695,7 @@ export function ServiceDetail({ serviceId, onBack }) {
       {/* Build Logs Section - shown when deployment is active or user has toggled it */}
       {(showBuildLogs || hasActiveDeployment()) && latestDeploymentId && (
         <>
-          <AsciiSectionDivider
+          <TerminalSection
             title="BUILD LOGS"
             collapsed={buildLogsCollapsed}
             onToggle={() => setBuildLogsCollapsed(!buildLogsCollapsed)}
@@ -721,7 +720,7 @@ export function ServiceDetail({ serviceId, onBack }) {
       {/* Dockerfile Validation Section */}
       {validation && (
         <>
-          <AsciiSectionDivider
+          <TerminalSection
             title="DOCKERFILE VALIDATION"
             collapsed={validationCollapsed}
             onToggle={() => setValidationCollapsed(!validationCollapsed)}
@@ -729,7 +728,7 @@ export function ServiceDetail({ serviceId, onBack }) {
           />
 
           {!validationCollapsed && (
-            <AsciiBox
+            <TerminalCard
               title={`Validation Results - ${validation.dockerfile_path}`}
               variant={validation.valid ? (validation.warnings.length > 0 ? 'amber' : 'green') : 'red'}
               className="mt-4"
@@ -822,23 +821,22 @@ export function ServiceDetail({ serviceId, onBack }) {
                   </TerminalButton>
                 </div>
               )}
-            </AsciiBox>
+            </TerminalCard>
           )}
         </>
       )}
 
       {/* Configuration Section */}
-      <AsciiSectionDivider
+      <TerminalSection
         title="Configuration"
         collapsed={configCollapsed}
         onToggle={() => setConfigCollapsed(!configCollapsed)}
         color="cyan"
         commandFlags={['--show-config', '--format=table']}
-        showLeftBorder={true}
       />
 
       {!configCollapsed && (
-        <AsciiBox title="Service Config" variant="cyan" className="mt-4">
+        <TerminalCard title="Service Config" variant="cyan" className="mt-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="flex items-center justify-between border-b border-terminal-border pb-2">
               <span className="font-mono text-xs text-terminal-muted uppercase">PORT:</span>
@@ -873,17 +871,16 @@ export function ServiceDetail({ serviceId, onBack }) {
             <span className="font-mono text-xs text-terminal-muted">REPO: </span>
             <span className="font-mono text-sm text-terminal-secondary break-all">{service.repo_url}</span>
           </div>
-        </AsciiBox>
+        </TerminalCard>
       )}
 
       {/* Resource Usage Section */}
-      <AsciiSectionDivider
+      <TerminalSection
         title="Resource Usage"
         collapsed={resourcesCollapsed}
         onToggle={() => setResourcesCollapsed(!resourcesCollapsed)}
         color="cyan"
         commandFlags={['--show-metrics', '--refresh=5s']}
-        showLeftBorder={true}
       />
 
       {!resourcesCollapsed && (
@@ -899,7 +896,7 @@ export function ServiceDetail({ serviceId, onBack }) {
       {/* Health Status Section */}
       {service.health_check_path && (
         <>
-          <AsciiSectionDivider
+          <TerminalSection
             title="HEALTH STATUS"
             collapsed={healthCollapsed}
             onToggle={() => setHealthCollapsed(!healthCollapsed)}
@@ -919,7 +916,7 @@ export function ServiceDetail({ serviceId, onBack }) {
       )}
 
       {/* Container Logs Section */}
-      <AsciiSectionDivider
+      <TerminalSection
         title="CONTAINER LOGS"
         collapsed={containerLogsCollapsed}
         onToggle={() => setContainerLogsCollapsed(!containerLogsCollapsed)}
@@ -936,13 +933,12 @@ export function ServiceDetail({ serviceId, onBack }) {
       )}
 
       {/* Environment Variables Section */}
-      <AsciiSectionDivider
+      <TerminalSection
         title="Environment Variables"
         collapsed={envCollapsed}
         onToggle={() => setEnvCollapsed(!envCollapsed)}
         color="amber"
         commandFlags={['--show-env', '--masked']}
-        showLeftBorder={true}
       />
 
       {!envCollapsed && (
@@ -1023,7 +1019,7 @@ export function ServiceDetail({ serviceId, onBack }) {
       )}
 
       {/* Webhooks Section */}
-      <AsciiSectionDivider
+      <TerminalSection
         title="WEBHOOK"
         collapsed={webhooksCollapsed}
         onToggle={() => setWebhooksCollapsed(!webhooksCollapsed)}
@@ -1031,7 +1027,7 @@ export function ServiceDetail({ serviceId, onBack }) {
       />
 
       {!webhooksCollapsed && (
-        <AsciiBox title="GitHub Webhook" variant="green" className="mt-4">
+        <TerminalCard title="GitHub Webhook" variant="green" className="mt-4">
           <div className="space-y-3">
             <div className="flex items-center justify-between gap-4">
               <span className="font-mono text-xs text-terminal-muted">WEBHOOK URL:</span>
@@ -1070,15 +1066,15 @@ export function ServiceDetail({ serviceId, onBack }) {
               </div>
             </div>
           </div>
-        </AsciiBox>
+        </TerminalCard>
       )}
 
       {/* Custom Domains Section */}
-      <AsciiSectionDivider
+      <TerminalSection
         title="CUSTOM DOMAINS"
         collapsed={domainsCollapsed}
         onToggle={() => setDomainsCollapsed(!domainsCollapsed)}
-        color="purple"
+        color="cyan"
       />
 
       {!domainsCollapsed && (
@@ -1088,7 +1084,7 @@ export function ServiceDetail({ serviceId, onBack }) {
       )}
 
       {/* Deployment History Section */}
-      <AsciiSectionDivider
+      <TerminalSection
         title="DEPLOYMENT HISTORY"
         collapsed={historyCollapsed}
         onToggle={() => setHistoryCollapsed(!historyCollapsed)}
@@ -1169,9 +1165,9 @@ export function ServiceDetail({ serviceId, onBack }) {
       )}
 
       {/* Service Info */}
-      <AsciiDivider variant="single" color="muted" className="my-6" />
+      <TerminalDivider variant="single" color="muted" className="my-6" />
 
-      <AsciiBox title="Service Info" variant="green">
+      <TerminalCard title="Service Info" variant="green">
         <div className="grid grid-cols-1 gap-4">
           {service.url && (
             <div className="flex justify-between font-mono text-sm items-center">
@@ -1203,164 +1199,153 @@ export function ServiceDetail({ serviceId, onBack }) {
             <span className="text-terminal-secondary">{formatDate(service.created_at)}</span>
           </div>
         </div>
-      </AsciiBox>
+      </TerminalCard>
 
       {/* Add Env Var Modal */}
       {showAddEnvModal && (
-        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
-          <div className="w-full max-w-md mx-4">
-            <div className="font-mono whitespace-pre text-terminal-muted select-none">
-              +-- ADD ENVIRONMENT VARIABLE ---------------+
+        <TerminalModal
+          title="ADD ENVIRONMENT VARIABLE"
+          variant="green"
+          onClose={() => {
+            setShowAddEnvModal(false)
+            setNewEnvKey('')
+            setNewEnvValue('')
+          }}
+        >
+          <form onSubmit={handleAddEnvVar}>
+            <div className="mb-4">
+              <label className="block font-mono text-xs text-terminal-muted uppercase mb-2">
+                Key
+              </label>
+              <TerminalInput
+                value={newEnvKey}
+                onChange={(e) => setNewEnvKey(e.target.value.toUpperCase())}
+                placeholder="MY_VARIABLE"
+                className="w-full"
+                autoFocus
+              />
             </div>
-            <div className="border-l border-r border-terminal-muted bg-terminal-bg-secondary px-6 py-6">
-              <form onSubmit={handleAddEnvVar}>
-                <div className="mb-4">
-                  <label className="block font-mono text-xs text-terminal-muted uppercase mb-2">
-                    Key
-                  </label>
-                  <TerminalInput
-                    value={newEnvKey}
-                    onChange={(e) => setNewEnvKey(e.target.value.toUpperCase())}
-                    placeholder="MY_VARIABLE"
-                    className="w-full"
-                    autoFocus
-                  />
-                </div>
-                <div className="mb-6">
-                  <label className="block font-mono text-xs text-terminal-muted uppercase mb-2">
-                    Value
-                  </label>
-                  <TerminalInput
-                    value={newEnvValue}
-                    onChange={(e) => setNewEnvValue(e.target.value)}
-                    placeholder="value"
-                    className="w-full"
-                  />
-                </div>
-                <div className="flex justify-end gap-3">
-                  <TerminalButton
-                    type="button"
-                    variant="secondary"
-                    onClick={() => {
-                      setShowAddEnvModal(false)
-                      setNewEnvKey('')
-                      setNewEnvValue('')
-                    }}
-                    disabled={envSubmitting}
-                  >
-                    [ CANCEL ]
-                  </TerminalButton>
-                  <TerminalButton
-                    type="submit"
-                    variant="primary"
-                    disabled={envSubmitting || !newEnvKey.trim() || !newEnvValue.trim()}
-                  >
-                    {envSubmitting ? '[ ADDING... ]' : '[ ADD ]'}
-                  </TerminalButton>
-                </div>
-              </form>
+            <div className="mb-6">
+              <label className="block font-mono text-xs text-terminal-muted uppercase mb-2">
+                Value
+              </label>
+              <TerminalInput
+                value={newEnvValue}
+                onChange={(e) => setNewEnvValue(e.target.value)}
+                placeholder="value"
+                className="w-full"
+              />
             </div>
-            <div className="font-mono whitespace-pre text-terminal-muted select-none">
-              +--------------------------------------------+
+            <div className="flex justify-end gap-3">
+              <TerminalButton
+                type="button"
+                variant="secondary"
+                onClick={() => {
+                  setShowAddEnvModal(false)
+                  setNewEnvKey('')
+                  setNewEnvValue('')
+                }}
+                disabled={envSubmitting}
+              >
+                [ CANCEL ]
+              </TerminalButton>
+              <TerminalButton
+                type="submit"
+                variant="primary"
+                disabled={envSubmitting || !newEnvKey.trim() || !newEnvValue.trim()}
+              >
+                {envSubmitting ? '[ ADDING... ]' : '[ ADD ]'}
+              </TerminalButton>
             </div>
-          </div>
-        </div>
+          </form>
+        </TerminalModal>
       )}
 
       {/* Edit Env Var Modal */}
       {showEditEnvModal && (
-        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
-          <div className="w-full max-w-md mx-4">
-            <div className="font-mono whitespace-pre text-terminal-muted select-none">
-              +-- EDIT ENVIRONMENT VARIABLE --------------+
+        <TerminalModal
+          title="EDIT ENVIRONMENT VARIABLE"
+          variant="amber"
+          onClose={() => {
+            setShowEditEnvModal(null)
+            setEditEnvValue('')
+          }}
+        >
+          <form onSubmit={handleUpdateEnvVar}>
+            <div className="mb-4">
+              <label className="block font-mono text-xs text-terminal-muted uppercase mb-2">
+                Key
+              </label>
+              <div className="font-mono text-terminal-secondary py-2">
+                {showEditEnvModal.key}
+              </div>
             </div>
-            <div className="border-l border-r border-terminal-muted bg-terminal-bg-secondary px-6 py-6">
-              <form onSubmit={handleUpdateEnvVar}>
-                <div className="mb-4">
-                  <label className="block font-mono text-xs text-terminal-muted uppercase mb-2">
-                    Key
-                  </label>
-                  <div className="font-mono text-terminal-secondary py-2">
-                    {showEditEnvModal.key}
-                  </div>
-                </div>
-                <div className="mb-6">
-                  <label className="block font-mono text-xs text-terminal-muted uppercase mb-2">
-                    New Value
-                  </label>
-                  <TerminalInput
-                    value={editEnvValue}
-                    onChange={(e) => setEditEnvValue(e.target.value)}
-                    placeholder="new value"
-                    className="w-full"
-                    autoFocus
-                  />
-                </div>
-                <div className="flex justify-end gap-3">
-                  <TerminalButton
-                    type="button"
-                    variant="secondary"
-                    onClick={() => {
-                      setShowEditEnvModal(null)
-                      setEditEnvValue('')
-                    }}
-                    disabled={envSubmitting}
-                  >
-                    [ CANCEL ]
-                  </TerminalButton>
-                  <TerminalButton
-                    type="submit"
-                    variant="primary"
-                    disabled={envSubmitting || !editEnvValue.trim()}
-                  >
-                    {envSubmitting ? '[ UPDATING... ]' : '[ UPDATE ]'}
-                  </TerminalButton>
-                </div>
-              </form>
+            <div className="mb-6">
+              <label className="block font-mono text-xs text-terminal-muted uppercase mb-2">
+                New Value
+              </label>
+              <TerminalInput
+                value={editEnvValue}
+                onChange={(e) => setEditEnvValue(e.target.value)}
+                placeholder="new value"
+                className="w-full"
+                autoFocus
+              />
             </div>
-            <div className="font-mono whitespace-pre text-terminal-muted select-none">
-              +--------------------------------------------+
+            <div className="flex justify-end gap-3">
+              <TerminalButton
+                type="button"
+                variant="secondary"
+                onClick={() => {
+                  setShowEditEnvModal(null)
+                  setEditEnvValue('')
+                }}
+                disabled={envSubmitting}
+              >
+                [ CANCEL ]
+              </TerminalButton>
+              <TerminalButton
+                type="submit"
+                variant="primary"
+                disabled={envSubmitting || !editEnvValue.trim()}
+              >
+                {envSubmitting ? '[ UPDATING... ]' : '[ UPDATE ]'}
+              </TerminalButton>
             </div>
-          </div>
-        </div>
+          </form>
+        </TerminalModal>
       )}
 
       {/* Delete Env Var Modal */}
       {showDeleteEnvModal && (
-        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
-          <div className="w-full max-w-md mx-4">
-            <div className="font-mono whitespace-pre text-terminal-red select-none">
-              +-- CONFIRM DELETE -------------------------+
-            </div>
-            <div className="border-l border-r border-terminal-red bg-terminal-bg-secondary px-6 py-6">
-              <p className="font-mono text-terminal-primary mb-2">
-                Delete environment variable "{showDeleteEnvModal.key}"?
-              </p>
-              <p className="font-mono text-xs text-terminal-muted mb-6">
-                This action cannot be undone.
-              </p>
-              <div className="flex justify-end gap-3">
-                <TerminalButton
-                  variant="secondary"
-                  onClick={() => setShowDeleteEnvModal(null)}
-                  disabled={envSubmitting}
-                >
-                  [ CANCEL ]
-                </TerminalButton>
-                <TerminalButton
-                  variant="danger"
-                  onClick={() => handleDeleteEnvVar(showDeleteEnvModal)}
-                  disabled={envSubmitting}
-                >
-                  {envSubmitting ? '[ DELETING... ]' : '[ DELETE ]'}
-                </TerminalButton>
-              </div>
-            </div>
-            <div className="font-mono whitespace-pre text-terminal-red select-none">
-              +--------------------------------------------+
-            </div>
+        <TerminalModal
+          title="CONFIRM DELETE"
+          variant="red"
+          onClose={() => setShowDeleteEnvModal(null)}
+        >
+          <p className="font-mono text-terminal-primary mb-2">
+            Delete environment variable "{showDeleteEnvModal.key}"?
+          </p>
+          <p className="font-mono text-xs text-terminal-muted mb-6">
+            This action cannot be undone.
+          </p>
+          <div className="flex justify-end gap-3">
+            <TerminalButton
+              variant="secondary"
+              onClick={() => setShowDeleteEnvModal(null)}
+              disabled={envSubmitting}
+            >
+              [ CANCEL ]
+            </TerminalButton>
+            <TerminalButton
+              variant="danger"
+              onClick={() => handleDeleteEnvVar(showDeleteEnvModal)}
+              disabled={envSubmitting}
+            >
+              {envSubmitting ? '[ DELETING... ]' : '[ DELETE ]'}
+            </TerminalButton>
           </div>
-        </div>
+        </TerminalModal>
       )}
 
       {/* Clone Service Modal */}
@@ -1377,43 +1362,37 @@ export function ServiceDetail({ serviceId, onBack }) {
 
       {/* Rollback Confirmation Modal */}
       {showRollbackModal && (
-        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
-          <div className="w-full max-w-md mx-4">
-            <div className="font-mono whitespace-pre text-terminal-cyan select-none">
-              +-- CONFIRM ROLLBACK -----------------------+
-            </div>
-            <div className="border-l border-r border-terminal-cyan bg-terminal-bg-secondary px-6 py-6">
-              <p className="font-mono text-terminal-primary mb-2">
-                Rollback to deployment {showRollbackModal.commit_sha?.substring(0, 7)}?
-              </p>
-              <p className="font-mono text-xs text-terminal-muted mb-2">
-                This will redeploy the image from this deployment without rebuilding.
-              </p>
-              <p className="font-mono text-xs text-terminal-muted mb-6">
-                Deployed: {formatDate(showRollbackModal.created_at)}
-              </p>
-              <div className="flex justify-end gap-3">
-                <TerminalButton
-                  variant="secondary"
-                  onClick={() => setShowRollbackModal(null)}
-                  disabled={rollingBack}
-                >
-                  [ CANCEL ]
-                </TerminalButton>
-                <TerminalButton
-                  variant="primary"
-                  onClick={() => handleRollback(showRollbackModal)}
-                  disabled={rollingBack}
-                >
-                  {rollingBack ? '[ ROLLING BACK... ]' : '[ ROLLBACK ]'}
-                </TerminalButton>
-              </div>
-            </div>
-            <div className="font-mono whitespace-pre text-terminal-cyan select-none">
-              +--------------------------------------------+
-            </div>
+        <TerminalModal
+          title="CONFIRM ROLLBACK"
+          variant="cyan"
+          onClose={() => setShowRollbackModal(null)}
+        >
+          <p className="font-mono text-terminal-primary mb-2">
+            Rollback to deployment {showRollbackModal.commit_sha?.substring(0, 7)}?
+          </p>
+          <p className="font-mono text-xs text-terminal-muted mb-2">
+            This will redeploy the image from this deployment without rebuilding.
+          </p>
+          <p className="font-mono text-xs text-terminal-muted mb-6">
+            Deployed: {formatDate(showRollbackModal.created_at)}
+          </p>
+          <div className="flex justify-end gap-3">
+            <TerminalButton
+              variant="secondary"
+              onClick={() => setShowRollbackModal(null)}
+              disabled={rollingBack}
+            >
+              [ CANCEL ]
+            </TerminalButton>
+            <TerminalButton
+              variant="primary"
+              onClick={() => handleRollback(showRollbackModal)}
+              disabled={rollingBack}
+            >
+              {rollingBack ? '[ ROLLING BACK... ]' : '[ ROLLBACK ]'}
+            </TerminalButton>
           </div>
-        </div>
+        </TerminalModal>
       )}
     </div>
   )

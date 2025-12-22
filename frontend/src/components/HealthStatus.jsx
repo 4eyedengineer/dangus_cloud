@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import TerminalSpinner from './TerminalSpinner'
-import { AsciiBox } from './AsciiBox'
+import { TerminalCard } from './TerminalCard'
 import { StatusIndicator } from './StatusIndicator'
 import { useWebSocket } from '../hooks/useWebSocket'
 
@@ -237,28 +237,28 @@ export function HealthStatus({ serviceId, fetchHealth, refreshInterval = 30000 }
 
   if (loading) {
     return (
-      <AsciiBox title="Health Status" variant="cyan">
+      <TerminalCard title="Health Status" variant="cyan">
         <div className="flex items-center justify-center py-4">
           <TerminalSpinner color="cyan" />
           <span className="ml-2 text-terminal-muted font-mono text-sm">Loading health status...</span>
         </div>
-      </AsciiBox>
+      </TerminalCard>
     )
   }
 
   if (error) {
     return (
-      <AsciiBox title="Health Status" variant="red">
+      <TerminalCard title="Health Status" variant="red">
         <div className="text-center py-4">
           <p className="font-mono text-terminal-red text-sm">! {error}</p>
         </div>
-      </AsciiBox>
+      </TerminalCard>
     )
   }
 
   if (!health || !health.configured) {
     return (
-      <AsciiBox title="Health Status" variant="cyan">
+      <TerminalCard title="Health Status" variant="cyan">
         <div className="text-center py-4">
           <p className="font-mono text-terminal-muted text-sm">
             No health check configured for this service.
@@ -267,7 +267,7 @@ export function HealthStatus({ serviceId, fetchHealth, refreshInterval = 30000 }
             Configure a health check path in service settings to enable monitoring.
           </p>
         </div>
-      </AsciiBox>
+      </TerminalCard>
     )
   }
 
@@ -275,7 +275,7 @@ export function HealthStatus({ serviceId, fetchHealth, refreshInterval = 30000 }
   const variant = isHealthy ? 'green' : 'red'
 
   return (
-    <AsciiBox title="Health Status" variant={variant}>
+    <TerminalCard title="Health Status" variant={variant}>
       {/* Current Status Header */}
       <div className="flex items-center justify-between mb-4 pb-3 border-b border-terminal-border">
         <div className="flex items-center gap-4">
@@ -363,7 +363,7 @@ export function HealthStatus({ serviceId, fetchHealth, refreshInterval = 30000 }
           <span>Auto-refreshing every {refreshInterval / 1000}s</span>
         )}
       </div>
-    </AsciiBox>
+    </TerminalCard>
   )
 }
 

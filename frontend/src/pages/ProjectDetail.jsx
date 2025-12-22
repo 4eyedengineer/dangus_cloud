@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { AsciiBox } from '../components/AsciiBox'
-import { AsciiDivider, AsciiSectionDivider } from '../components/AsciiDivider'
+import { TerminalCard, TerminalDivider, TerminalSection, TerminalModal } from '../components/TerminalCard'
 import { StatusIndicator, ProgressGauge } from '../components/StatusIndicator'
 import TerminalButton from '../components/TerminalButton'
 import TerminalSpinner from '../components/TerminalSpinner'
@@ -278,11 +277,11 @@ export function ProjectDetail({ projectId, onServiceClick, onNewService, onBack 
         </div>
       </div>
 
-      <AsciiDivider variant="double" color="green" />
+      <TerminalDivider variant="double" color="green" />
 
       {/* Live Service URLs - Prominent Display */}
       {project.services?.some(s => s.url && s.current_status === 'live') && (
-        <AsciiBox title="Live URLs" variant="green" className="border-terminal-green/50 bg-terminal-bg-secondary">
+        <TerminalCard title="Live URLs" variant="green" className="border-terminal-green/50 bg-terminal-bg-secondary">
           <div className="space-y-3">
             {project.services
               .filter(s => s.url && s.current_status === 'live')
@@ -311,11 +310,11 @@ export function ProjectDetail({ projectId, onServiceClick, onNewService, onBack 
                 </div>
               ))}
           </div>
-        </AsciiBox>
+        </TerminalCard>
       )}
 
       {/* Service Discovery Panel */}
-      <AsciiSectionDivider
+      <TerminalSection
         title="SERVICE DISCOVERY"
         collapsed={discoveryCollapsed}
         onToggle={() => setDiscoveryCollapsed(!discoveryCollapsed)}
@@ -323,7 +322,7 @@ export function ProjectDetail({ projectId, onServiceClick, onNewService, onBack 
       />
 
       {!discoveryCollapsed && (
-        <AsciiBox title="Endpoints" variant="cyan" className="mt-4">
+        <TerminalCard title="Endpoints" variant="cyan" className="mt-4">
           <div className="space-y-3">
             <div className="flex items-center justify-between gap-4">
               <div className="flex items-center gap-2 min-w-0">
@@ -358,11 +357,11 @@ export function ProjectDetail({ projectId, onServiceClick, onNewService, onBack 
               </button>
             </div>
           </div>
-        </AsciiBox>
+        </TerminalCard>
       )}
 
       {/* Services List */}
-      <AsciiSectionDivider
+      <TerminalSection
         title="SERVICES"
         collapsed={servicesCollapsed}
         onToggle={() => setServicesCollapsed(!servicesCollapsed)}
@@ -466,10 +465,10 @@ export function ProjectDetail({ projectId, onServiceClick, onNewService, onBack 
       )}
 
       {/* Project Info */}
-      <AsciiDivider variant="single" color="muted" className="my-6" />
+      <TerminalDivider variant="single" color="muted" className="my-6" />
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <AsciiBox title="Project Info" variant="green">
+        <TerminalCard title="Project Info" variant="green">
           <div className="space-y-2">
             <div className="flex justify-between font-mono text-sm">
               <span className="text-terminal-muted">NAME:</span>
@@ -488,9 +487,9 @@ export function ProjectDetail({ projectId, onServiceClick, onNewService, onBack 
               <span className="text-terminal-secondary">{formatDate(project.created_at)}</span>
             </div>
           </div>
-        </AsciiBox>
+        </TerminalCard>
 
-        <AsciiBox title="Quick Actions" variant="amber">
+        <TerminalCard title="Quick Actions" variant="amber">
           <div className="space-y-3">
             <TerminalButton
               variant="primary"
@@ -522,46 +521,36 @@ export function ProjectDetail({ projectId, onServiceClick, onNewService, onBack 
               [ REFRESH ]
             </TerminalButton>
           </div>
-        </AsciiBox>
+        </TerminalCard>
       </div>
 
       {/* Delete Service Modal */}
       {showDeleteModal && (
-        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
-          <div className="w-full max-w-md mx-4">
-            <div className="font-mono whitespace-pre text-terminal-red select-none">
-              +-- CONFIRM DELETE -------------------------+
-            </div>
-            <div className="border-l border-r border-terminal-red bg-terminal-bg-secondary px-6 py-6">
-              <p className="font-mono text-terminal-primary mb-2">
-                Delete service "{showDeleteModal.name}"?
-              </p>
-              <p className="font-mono text-xs text-terminal-muted mb-6">
-                This will delete the service, its environment variables, and deployment history.
-                This action cannot be undone.
-              </p>
-              <div className="flex justify-end gap-3">
-                <TerminalButton
-                  variant="secondary"
-                  onClick={() => setShowDeleteModal(null)}
-                  disabled={deleting}
-                >
-                  [ CANCEL ]
-                </TerminalButton>
-                <TerminalButton
-                  variant="danger"
-                  onClick={() => handleDeleteService(showDeleteModal)}
-                  disabled={deleting}
-                >
-                  {deleting ? '[ DELETING... ]' : '[ DELETE ]'}
-                </TerminalButton>
-              </div>
-            </div>
-            <div className="font-mono whitespace-pre text-terminal-red select-none">
-              +--------------------------------------------+
-            </div>
+        <TerminalModal title="CONFIRM DELETE" variant="red">
+          <p className="font-mono text-terminal-primary mb-2">
+            Delete service "{showDeleteModal.name}"?
+          </p>
+          <p className="font-mono text-xs text-terminal-muted mb-6">
+            This will delete the service, its environment variables, and deployment history.
+            This action cannot be undone.
+          </p>
+          <div className="flex justify-end gap-3">
+            <TerminalButton
+              variant="secondary"
+              onClick={() => setShowDeleteModal(null)}
+              disabled={deleting}
+            >
+              [ CANCEL ]
+            </TerminalButton>
+            <TerminalButton
+              variant="danger"
+              onClick={() => handleDeleteService(showDeleteModal)}
+              disabled={deleting}
+            >
+              {deleting ? '[ DELETING... ]' : '[ DELETE ]'}
+            </TerminalButton>
           </div>
-        </div>
+        </TerminalModal>
       )}
     </div>
   )
