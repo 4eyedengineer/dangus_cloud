@@ -1,6 +1,5 @@
 export { Login } from './Login'
 export { Dashboard } from './Dashboard'
-export { ProjectsList } from './ProjectsList'
 export { ProjectDetail } from './ProjectDetail'
 export { ServiceDetail } from './ServiceDetail'
 export { NewServiceForm } from './NewServiceForm'

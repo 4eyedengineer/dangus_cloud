@@ -11,7 +11,6 @@ import {
 import {
   Login,
   Dashboard,
-  ProjectsList,
   ProjectDetail,
   ServiceDetail,
   NewServiceForm,
@@ -26,63 +25,76 @@ import { ApiError } from './api/utils'
 
 // Wrapper components for pages that need route params
 function ProjectDetailPage({ user, onServiceClick }) {
-  const { projectId } = useParams()
+  const { projectId, '*': tabPath } = useParams()
   const navigate = useNavigate()
+  const toast = useToast()
+
+  // Handle services/new as a special case (until Phase 4 removes this)
+  if (tabPath === 'services/new') {
+    const handleSubmit = async (data) => {
+      try {
+        const serviceData = {
+          name: data.name,
+          repo_url: data.image,
+          port: data.port,
+          branch: 'main',
+          dockerfile_path: 'Dockerfile',
+          replicas: data.replicas || 1,
+          storage_gb: data.storage || null,
+          health_check_path: data.healthCheckPath || null
+        }
+        await createService(projectId, serviceData)
+        toast.success(`Service "${data.name}" created successfully`)
+        navigate(`/projects/${projectId}`)
+      } catch (err) {
+        const message = err instanceof ApiError ? err.message : 'Failed to create service'
+        toast.error(message)
+        throw err
+      }
+    }
+    return (
+      <NewServiceForm
+        projectId={projectId}
+        onSubmit={handleSubmit}
+        onCancel={() => navigate(`/projects/${projectId}`)}
+      />
+    )
+  }
+
+  // Derive active tab from URL path
+  const activeTab = tabPath || 'overview'
 
   return (
     <ProjectDetail
       projectId={projectId}
+      activeTab={activeTab}
       onServiceClick={onServiceClick}
       onNewService={() => navigate(`/projects/${projectId}/services/new`)}
-      onBack={() => navigate('/projects')}
+      onBack={() => navigate('/')}
+      onTabChange={(tab) => {
+        const basePath = `/projects/${projectId}`
+        navigate(tab === 'overview' ? basePath : `${basePath}/${tab}`)
+      }}
     />
   )
 }
 
 function ServiceDetailPage() {
-  const { serviceId } = useParams()
+  const { serviceId, '*': tabPath } = useParams()
   const navigate = useNavigate()
+
+  // Derive active tab from URL path
+  const activeTab = tabPath || 'overview'
 
   return (
     <ServiceDetail
       serviceId={serviceId}
+      activeTab={activeTab}
       onBack={() => navigate(-1)}
-    />
-  )
-}
-
-function NewServicePage() {
-  const { projectId } = useParams()
-  const navigate = useNavigate()
-  const toast = useToast()
-
-  const handleSubmit = async (data) => {
-    try {
-      const serviceData = {
-        name: data.name,
-        repo_url: data.image,
-        port: data.port,
-        branch: 'main',
-        dockerfile_path: 'Dockerfile',
-        replicas: data.replicas || 1,
-        storage_gb: data.storage || null,
-        health_check_path: data.healthCheckPath || null
-      }
-      await createService(projectId, serviceData)
-      toast.success(`Service "${data.name}" created successfully`)
-      navigate(`/projects/${projectId}`)
-    } catch (err) {
-      const message = err instanceof ApiError ? err.message : 'Failed to create service'
-      toast.error(message)
-      throw err
-    }
-  }
-
-  return (
-    <NewServiceForm
-      projectId={projectId}
-      onSubmit={handleSubmit}
-      onCancel={() => navigate(`/projects/${projectId}`)}
+      onTabChange={(tab) => {
+        const basePath = `/services/${serviceId}`
+        navigate(tab === 'overview' ? basePath : `${basePath}/${tab}`)
+      }}
     />
   )
 }
@@ -97,7 +109,7 @@ function NewProjectPage() {
   return (
     <NewProjectWizard
       onComplete={handleComplete}
-      onCancel={() => navigate('/projects')}
+      onCancel={() => navigate('/')}
     />
   )
 }
@@ -116,17 +128,6 @@ function DashboardPage() {
 
   return (
     <Dashboard
-      onProjectClick={(project) => navigate(`/projects/${project.id}`)}
-      onNewProject={() => navigate('/projects/new')}
-    />
-  )
-}
-
-function ProjectsListPage() {
-  const navigate = useNavigate()
-
-  return (
-    <ProjectsList
       onProjectClick={(project) => navigate(`/projects/${project.id}`)}
       onNewProject={() => navigate('/projects/new')}
     />
@@ -160,9 +161,8 @@ function AppContent() {
   // Determine active nav based on current route
   const getActiveNav = () => {
     const path = location.pathname
-    if (path.startsWith('/projects')) return 'Projects'
     if (path.startsWith('/settings')) return 'Settings'
-    if (path.startsWith('/services')) return 'Projects' // Services are part of projects
+    // All project/service views are part of the Dashboard context
     return 'Dashboard'
   }
 
@@ -170,7 +170,6 @@ function AppContent() {
 
   const navItems = [
     { label: 'Dashboard', href: '/', active: activeNav === 'Dashboard' },
-    { label: 'Projects', href: '/projects', active: activeNav === 'Projects' },
     { label: 'Settings', href: '/settings', active: activeNav === 'Settings' },
     { label: 'Logout', href: '/logout', active: false }
   ]
@@ -202,37 +201,34 @@ function AppContent() {
   const getSidebarItems = () => {
     const path = location.pathname
 
-    if (path.match(/^\/projects\/[^/]+$/)) {
+    // Extract IDs from path for building hrefs
+    const projectMatch = path.match(/^\/projects\/([^/]+)/)
+    const serviceMatch = path.match(/^\/services\/([^/]+)/)
+
+    if (projectMatch) {
+      const projectId = projectMatch[1]
+      if (projectId === 'new') return [] // No sidebar for new project wizard
+      const basePath = `/projects/${projectId}`
       return [
-        { label: 'Overview', active: true },
-        { label: 'Services' },
-        { label: 'Deployments' },
-        { label: 'Logs' },
-        { label: 'Settings' }
+        { label: 'Overview', href: basePath },
+        { label: 'Services', href: `${basePath}/services` },
+        { label: 'Logs', href: `${basePath}/logs` },
+        { label: 'Settings', href: `${basePath}/settings` }
       ]
     }
-    if (path.startsWith('/services/')) {
+    if (serviceMatch) {
+      const serviceId = serviceMatch[1]
+      const basePath = `/services/${serviceId}`
       return [
-        { label: 'Overview', active: true },
-        { label: 'Configuration' },
-        { label: 'Environment' },
-        { label: 'Webhooks' },
-        { label: 'History' }
+        { label: 'Overview', href: basePath },
+        { label: 'Config', href: `${basePath}/config` },
+        { label: 'Environment', href: `${basePath}/env` },
+        { label: 'Logs', href: `${basePath}/logs` },
+        { label: 'History', href: `${basePath}/history` }
       ]
     }
-    if (path === '/projects') {
-      return [
-        { label: 'All Projects', active: true },
-        { label: 'Active' },
-        { label: 'Archived' },
-        { label: 'Favorites' }
-      ]
-    }
-    return [
-      { label: 'Dashboard', active: true },
-      { label: 'Recent Activity' },
-      { label: 'Quick Stats' }
-    ]
+    // Dashboard - no navigation sidebar needed
+    return []
   }
 
   const getBreadcrumbs = () => {
@@ -241,21 +237,32 @@ function AppContent() {
 
     if (path === '/') {
       crumbs.push({ label: 'dashboard' })
-    } else if (path === '/projects') {
-      crumbs.push({ label: 'projects' })
     } else if (path === '/projects/new') {
-      crumbs.push({ label: 'projects', href: '/projects' })
+      crumbs.push({ label: 'dashboard', href: '/' })
       crumbs.push({ label: 'new-project' })
     } else if (path.match(/^\/projects\/[^/]+\/services\/new$/)) {
-      crumbs.push({ label: 'projects', href: '/projects' })
-      crumbs.push({ label: 'project', href: path.replace('/services/new', '') })
+      const projectPath = path.replace('/services/new', '')
+      crumbs.push({ label: 'dashboard', href: '/' })
+      crumbs.push({ label: 'project', href: projectPath })
       crumbs.push({ label: 'new-service' })
-    } else if (path.match(/^\/projects\/[^/]+$/)) {
-      crumbs.push({ label: 'projects', href: '/projects' })
-      crumbs.push({ label: 'project' })
-    } else if (path.match(/^\/services\/[^/]+$/)) {
-      crumbs.push({ label: 'projects', href: '/projects' })
-      crumbs.push({ label: 'service' })
+    } else if (path.match(/^\/projects\/([^/]+)(\/.*)?$/)) {
+      const match = path.match(/^\/projects\/([^/]+)(\/(.*))?$/)
+      const projectId = match[1]
+      const tab = match[3]
+      crumbs.push({ label: 'dashboard', href: '/' })
+      crumbs.push({ label: 'project', href: `/projects/${projectId}` })
+      if (tab) {
+        crumbs.push({ label: tab })
+      }
+    } else if (path.match(/^\/services\/([^/]+)(\/.*)?$/)) {
+      const match = path.match(/^\/services\/([^/]+)(\/(.*))?$/)
+      const serviceId = match[1]
+      const tab = match[3]
+      crumbs.push({ label: 'dashboard', href: '/' })
+      crumbs.push({ label: 'service', href: `/services/${serviceId}` })
+      if (tab) {
+        crumbs.push({ label: tab })
+      }
     } else if (path === '/settings') {
       crumbs.push({ label: 'settings' })
     }
@@ -280,12 +287,10 @@ function AppContent() {
     return <Login onLogin={handleLogin} />
   }
 
-  const sidebarContent = (
-    <SidebarMenu
-      items={getSidebarItems()}
-      onItemClick={(item) => toast.info(`Navigating to ${item.label}`)}
-    />
-  )
+  const sidebarItems = getSidebarItems()
+  const sidebarContent = sidebarItems.length > 0 ? (
+    <SidebarMenu items={sidebarItems} />
+  ) : null
 
   return (
     <Layout
@@ -297,11 +302,9 @@ function AppContent() {
     >
       <Routes>
         <Route path="/" element={<DashboardPage />} />
-        <Route path="/projects" element={<ProjectsListPage />} />
         <Route path="/projects/new" element={<NewProjectPage />} />
-        <Route path="/projects/:projectId" element={<ProjectDetailPage user={user} onServiceClick={handleServiceClick} />} />
-        <Route path="/projects/:projectId/services/new" element={<NewServicePage />} />
-        <Route path="/services/:serviceId" element={<ServiceDetailPage />} />
+        <Route path="/projects/:projectId/*" element={<ProjectDetailPage user={user} onServiceClick={handleServiceClick} />} />
+        <Route path="/services/:serviceId/*" element={<ServiceDetailPage />} />
         <Route path="/settings" element={<SettingsPage user={user} onLogout={() => { setUser(null); navigate('/'); }} />} />
       </Routes>
     </Layout>

@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { useNavigate, useLocation, Link } from 'react-router-dom'
 import { AsciiLogo } from './AsciiLogo'
 import { DigitalDebrisFill } from './DigitalDebris'
 import { StatusIndicator } from './StatusIndicator'
@@ -180,12 +181,12 @@ export function Layout({
                       /
                     </span>
                     {crumb.href ? (
-                      <a
-                        href={crumb.href}
+                      <Link
+                        to={crumb.href}
                         className="text-terminal-secondary hover:text-terminal-primary transition-terminal-fast"
                       >
                         {crumb.label}
-                      </a>
+                      </Link>
                     ) : (
                       <span className="text-terminal-primary">{crumb.label}</span>
                     )}
@@ -305,12 +306,12 @@ export function Breadcrumb({ items = [] }) {
               /
             </span>
             {item.href ? (
-              <a
-                href={item.href}
+              <Link
+                to={item.href}
                 className="text-terminal-secondary hover:text-terminal-primary transition-terminal-fast"
               >
                 {item.label}
-              </a>
+              </Link>
             ) : (
               <span className="text-terminal-primary">{item.label}</span>
             )}
@@ -321,28 +322,48 @@ export function Breadcrumb({ items = [] }) {
   )
 }
 
-export function SidebarMenu({ items = [], onItemClick = () => {} }) {
+export function SidebarMenu({ items = [] }) {
+  const navigate = useNavigate()
+  const location = useLocation()
+
+  const handleClick = (item) => {
+    if (item.href) {
+      navigate(item.href)
+    }
+  }
+
   return (
     <nav className="py-2">
-      {items.map((item, index) => (
-        <button
-          key={index}
-          onClick={() => onItemClick(item)}
-          className={`
-            w-full px-4 py-2 text-left font-mono text-sm
-            transition-terminal-fast flex items-center gap-2
-            ${item.active
-              ? 'text-terminal-primary bg-terminal-bg-elevated'
-              : 'text-terminal-secondary hover:text-terminal-primary hover:bg-terminal-bg-elevated'
-            }
-          `}
-        >
-          <span aria-hidden="true">
-            {item.active ? '►' : ' '}
-          </span>
-          <span>{item.label}</span>
-        </button>
-      ))}
+      {items.map((item, index) => {
+        // Determine if this item is active based on current URL
+        const isActive = item.href
+          ? location.pathname === item.href || location.pathname.startsWith(item.href + '/')
+          : item.active
+
+        return (
+          <button
+            key={index}
+            onClick={() => handleClick(item)}
+            disabled={!item.href}
+            className={`
+              w-full px-4 py-2 text-left font-mono text-sm
+              transition-terminal-fast flex items-center gap-2
+              outline-none focus-visible:ring-1 focus-visible:ring-terminal-primary
+              ${isActive
+                ? 'text-terminal-primary bg-terminal-bg-elevated'
+                : item.href
+                  ? 'text-terminal-secondary hover:text-terminal-primary hover:bg-terminal-bg-elevated cursor-pointer'
+                  : 'text-terminal-muted cursor-default'
+              }
+            `}
+          >
+            <span aria-hidden="true">
+              {isActive ? '►' : ' '}
+            </span>
+            <span>{item.label}</span>
+          </button>
+        )
+      })}
     </nav>
   )
 }

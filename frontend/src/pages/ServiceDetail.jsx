@@ -4,6 +4,7 @@ import { StatusIndicator } from '../components/StatusIndicator'
 import TerminalButton from '../components/TerminalButton'
 import TerminalInput from '../components/TerminalInput'
 import TerminalSpinner from '../components/TerminalSpinner'
+import TerminalTabs from '../components/TerminalTabs'
 import { useToast } from '../components/Toast'
 import { BuildLogViewer } from '../components/BuildLogViewer'
 import { ResourceMetrics } from '../components/ResourceMetrics'
@@ -18,7 +19,15 @@ import { ApiError } from '../api/utils'
 import { useDeploymentStatus } from '../hooks/useDeploymentStatus'
 import { useWebSocket } from '../hooks/useWebSocket'
 
-export function ServiceDetail({ serviceId, onBack }) {
+const SERVICE_TABS = [
+  { id: 'overview', label: 'Overview' },
+  { id: 'config', label: 'Config' },
+  { id: 'env', label: 'Environment' },
+  { id: 'logs', label: 'Logs' },
+  { id: 'history', label: 'History' }
+]
+
+export function ServiceDetail({ serviceId, activeTab = 'overview', onTabChange, onBack }) {
   const [service, setService] = useState(null)
   const [envVars, setEnvVars] = useState([])
   const [deployments, setDeployments] = useState([])
@@ -663,7 +672,20 @@ export function ServiceDetail({ serviceId, onBack }) {
 
       <TerminalDivider variant="double" color="green" />
 
-      {/* Port Mismatch Warning Banner */}
+      {/* Tab Navigation */}
+      {onTabChange && (
+        <TerminalTabs
+          tabs={SERVICE_TABS}
+          activeTab={activeTab}
+          onTabChange={onTabChange}
+          className="mb-6"
+        />
+      )}
+
+      {/* === OVERVIEW TAB === */}
+      {activeTab === 'overview' && (
+        <>
+          {/* Port Mismatch Warning Banner */}
       {service.port_mismatch && service.detected_port && (
         <div className="border-2 border-terminal-yellow bg-terminal-yellow/10 p-4 mb-6">
           <div className="flex items-start justify-between gap-4">
@@ -825,7 +847,12 @@ export function ServiceDetail({ serviceId, onBack }) {
           )}
         </>
       )}
+        </>
+      )}
 
+      {/* === CONFIG TAB === */}
+      {activeTab === 'config' && (
+        <>
       {/* Configuration Section */}
       <TerminalSection
         title="Configuration"
@@ -914,7 +941,12 @@ export function ServiceDetail({ serviceId, onBack }) {
           )}
         </>
       )}
+        </>
+      )}
 
+      {/* === LOGS TAB === */}
+      {activeTab === 'logs' && (
+        <>
       {/* Container Logs Section */}
       <TerminalSection
         title="CONTAINER LOGS"
@@ -932,6 +964,35 @@ export function ServiceDetail({ serviceId, onBack }) {
         </div>
       )}
 
+      {/* Build Logs History - Also available in logs tab */}
+      {latestDeploymentId && (
+        <>
+          <TerminalSection
+            title="BUILD LOGS"
+            collapsed={buildLogsCollapsed}
+            onToggle={() => setBuildLogsCollapsed(!buildLogsCollapsed)}
+            color="cyan"
+          />
+
+          {!buildLogsCollapsed && (
+            <div className="mt-4">
+              <BuildLogViewer
+                deploymentId={latestDeploymentId}
+                enabled={!buildLogsCollapsed}
+                onComplete={(status) => {
+                  loadServiceData()
+                }}
+              />
+            </div>
+          )}
+        </>
+      )}
+        </>
+      )}
+
+      {/* === ENVIRONMENT TAB === */}
+      {activeTab === 'env' && (
+        <>
       {/* Environment Variables Section */}
       <TerminalSection
         title="Environment Variables"
@@ -1017,7 +1078,12 @@ export function ServiceDetail({ serviceId, onBack }) {
           )}
         </div>
       )}
+        </>
+      )}
 
+      {/* === CONFIG TAB (continued - Webhooks & Domains) === */}
+      {activeTab === 'config' && (
+        <>
       {/* Webhooks Section */}
       <TerminalSection
         title="WEBHOOK"
@@ -1082,7 +1148,12 @@ export function ServiceDetail({ serviceId, onBack }) {
           <DomainManager serviceId={serviceId} />
         </div>
       )}
+        </>
+      )}
 
+      {/* === HISTORY TAB === */}
+      {activeTab === 'history' && (
+        <>
       {/* Deployment History Section */}
       <TerminalSection
         title="DEPLOYMENT HISTORY"
@@ -1163,8 +1234,10 @@ export function ServiceDetail({ serviceId, onBack }) {
           )}
         </div>
       )}
+        </>
+      )}
 
-      {/* Service Info */}
+      {/* Service Info - Always visible */}
       <TerminalDivider variant="single" color="muted" className="my-6" />
 
       <TerminalCard title="Service Info" variant="green">
