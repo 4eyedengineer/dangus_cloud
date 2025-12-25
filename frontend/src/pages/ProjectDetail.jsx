@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { TerminalCard, TerminalDivider, TerminalSection, TerminalModal } from '../components/TerminalCard'
 import { StatusIndicator, ProgressGauge } from '../components/StatusIndicator'
+import { ErrorDisplay } from '../components/ErrorDisplay'
 import TerminalButton from '../components/TerminalButton'
 import TerminalSpinner from '../components/TerminalSpinner'
 import TerminalTabs from '../components/TerminalTabs'
@@ -263,17 +264,12 @@ export function ProjectDetail({ projectId, activeTab = 'overview', onTabChange, 
 
   if (error) {
     return (
-      <div className="flex flex-col items-center justify-center py-20">
-        <p className="font-mono text-terminal-red mb-4">! {error}</p>
-        <div className="flex gap-3">
-          <TerminalButton variant="secondary" onClick={onBack}>
-            [ BACK ]
-          </TerminalButton>
-          <TerminalButton variant="secondary" onClick={loadProject}>
-            [ RETRY ]
-          </TerminalButton>
-        </div>
-      </div>
+      <ErrorDisplay
+        error={error}
+        onRetry={loadProject}
+        onBack={onBack}
+        title="Project Error"
+      />
     )
   }
 
@@ -572,14 +568,9 @@ export function ProjectDetail({ projectId, activeTab = 'overview', onTabChange, 
       {/* === SERVICES TAB === */}
       {activeTab === 'services' && (
         <>
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="font-mono text-lg text-terminal-primary uppercase">
-              Services ({project.services?.length || 0})
-            </h2>
-            <TerminalButton variant="primary" onClick={onNewService}>
-              [ ADD SERVICE ]
-            </TerminalButton>
-          </div>
+          <h2 className="font-mono text-lg text-terminal-primary uppercase mb-4">
+            Services ({project.services?.length || 0})
+          </h2>
           {renderServicesTable()}
         </>
       )}

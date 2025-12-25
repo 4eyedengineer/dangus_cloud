@@ -15,6 +15,7 @@ import domainRoutes from './routes/domains.js';
 import notificationRoutes from './routes/notifications.js';
 import dockerfileRoutes from './routes/dockerfile.js';
 import adminRoutes from './routes/admin.js';
+import healthRoutes from './routes/health.js';
 import { startMetricsCollection, stopMetricsCollection } from './services/metricsCollector.js';
 import { runStartupHealthCheck } from './services/reconciliation.js';
 
@@ -123,6 +124,9 @@ fastify.register(dockerfileRoutes);
 
 // Register admin routes (health, reconciliation)
 fastify.register(adminRoutes);
+
+// Register health summary routes (dashboard)
+fastify.register(healthRoutes);
 
 // Routes that do not require authentication
 const publicRoutes = [

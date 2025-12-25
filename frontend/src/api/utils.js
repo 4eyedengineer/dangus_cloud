@@ -6,6 +6,7 @@ export class ApiError extends Error {
     this.name = 'ApiError';
     this.status = status;
     this.data = data;
+    this.isNetworkError = data.isNetworkError || false;
   }
 
   get isUnauthorized() {
@@ -27,6 +28,10 @@ export class ApiError extends Error {
   get isServerError() {
     return this.status >= 500;
   }
+
+  static networkError(message = 'Network error - check your connection') {
+    return new ApiError(0, message, { isNetworkError: true });
+  }
 }
 
 export async function apiFetch(endpoint, options = {}) {
@@ -38,11 +43,20 @@ export async function apiFetch(endpoint, options = {}) {
     headers['Content-Type'] = 'application/json';
   }
 
-  const response = await fetch(url, {
-    ...options,
-    credentials: 'include',
-    headers,
-  });
+  let response;
+  try {
+    response = await fetch(url, {
+      ...options,
+      credentials: 'include',
+      headers,
+    });
+  } catch (err) {
+    // Network errors (no connection, DNS failure, CORS, etc.)
+    if (err.name === 'TypeError') {
+      throw ApiError.networkError();
+    }
+    throw err;
+  }
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));

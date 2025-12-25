@@ -1,15 +1,17 @@
 import { useState, useEffect, useMemo } from 'react'
 import PropTypes from 'prop-types'
 import { TerminalCard, TerminalDivider, TerminalSection, TerminalModal } from '../components/TerminalCard'
-import { StatusIndicator, StatusBar, ProgressGauge } from '../components/StatusIndicator'
+import { StatusIndicator, StatusBar } from '../components/StatusIndicator'
+import { ErrorDisplay, EmptyState } from '../components/ErrorDisplay'
 import TerminalButton from '../components/TerminalButton'
 import TerminalInput from '../components/TerminalInput'
 import TerminalSelect from '../components/TerminalSelect'
 import TerminalSpinner from '../components/TerminalSpinner'
 import { useToast } from '../components/Toast'
-import { fetchProjects, createProject, deleteProject } from '../api/projects'
+import { fetchProjects, deleteProject } from '../api/projects'
+import { fetchHealthSummary } from '../api/health'
 import { ApiError } from '../api/utils'
-import { formatDate } from '../utils'
+import { formatDate, formatRelativeTime } from '../utils'
 
 const FILTER_OPTIONS = [
   { value: 'all', label: 'All Projects' },
@@ -22,37 +24,46 @@ const SORT_OPTIONS = [
   { value: 'created_asc', label: 'Oldest First' },
   { value: 'name_asc', label: 'Name (A-Z)' },
   { value: 'name_desc', label: 'Name (Z-A)' },
-  { value: 'services_desc', label: 'Most Services' },
-  { value: 'services_asc', label: 'Least Services' }
+  { value: 'services_desc', label: 'Most Services' }
 ]
 
-export function Dashboard({ onProjectClick, onNewProject }) {
+export function Dashboard({ onProjectClick, onNewProject, onServiceClick }) {
   const [projects, setProjects] = useState([])
+  const [healthData, setHealthData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
-  const [viewCollapsed, setViewCollapsed] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [filter, setFilter] = useState('all')
   const [sortBy, setSortBy] = useState('created_desc')
-  const [selectedProjects, setSelectedProjects] = useState(new Set())
   const [showDeleteModal, setShowDeleteModal] = useState(null)
-  const [showBulkDeleteModal, setShowBulkDeleteModal] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [errorsCollapsed, setErrorsCollapsed] = useState(false)
+  const [deploymentsCollapsed, setDeploymentsCollapsed] = useState(false)
+  const [projectsCollapsed, setProjectsCollapsed] = useState(false)
   const toast = useToast()
 
   useEffect(() => {
-    loadProjects()
+    loadDashboardData()
+    // Refresh health data every 30 seconds
+    const interval = setInterval(() => {
+      fetchHealthSummary().then(setHealthData).catch(() => {})
+    }, 30000)
+    return () => clearInterval(interval)
   }, [])
 
-  const loadProjects = async () => {
+  const loadDashboardData = async () => {
     setLoading(true)
     setError(null)
     try {
-      const data = await fetchProjects()
-      setProjects(data)
+      const [projectsData, health] = await Promise.all([
+        fetchProjects(),
+        fetchHealthSummary().catch(() => null)
+      ])
+      setProjects(projectsData)
+      setHealthData(health)
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Failed to load projects')
-      toast.error('Failed to load projects')
+      setError(err instanceof ApiError ? err.message : 'Failed to load dashboard')
+      toast.error('Failed to load dashboard')
     } finally {
       setLoading(false)
     }
@@ -63,65 +74,18 @@ export function Dashboard({ onProjectClick, onNewProject }) {
     try {
       await deleteProject(project.id)
       setProjects(prev => prev.filter(p => p.id !== project.id))
-      setSelectedProjects(prev => {
-        const next = new Set(prev)
-        next.delete(project.id)
-        return next
-      })
       setShowDeleteModal(null)
-      toast.success(`Project "${project.name}" deleted successfully`)
+      toast.success(`Project "${project.name}" deleted`)
     } catch (err) {
-      const message = err instanceof ApiError ? err.message : 'Failed to delete project'
-      toast.error(message)
+      toast.error(err instanceof ApiError ? err.message : 'Failed to delete project')
     } finally {
       setDeleting(false)
     }
   }
 
-  const handleBulkDelete = async () => {
-    setDeleting(true)
-    const toDelete = Array.from(selectedProjects)
-    let deleted = 0
-    let failed = 0
-
-    for (const id of toDelete) {
-      try {
-        await deleteProject(id)
-        setProjects(prev => prev.filter(p => p.id !== id))
-        deleted++
-      } catch {
-        failed++
-      }
-    }
-
-    setSelectedProjects(new Set())
-    setShowBulkDeleteModal(false)
-    setDeleting(false)
-
-    if (deleted > 0) {
-      toast.success(`Deleted ${deleted} project(s)`)
-    }
-    if (failed > 0) {
-      toast.error(`Failed to delete ${failed} project(s)`)
-    }
-  }
-
-  const toggleProjectSelection = (projectId) => {
-    setSelectedProjects(prev => {
-      const next = new Set(prev)
-      if (next.has(projectId)) {
-        next.delete(projectId)
-      } else {
-        next.add(projectId)
-      }
-      return next
-    })
-  }
-
   const filteredAndSortedProjects = useMemo(() => {
     let result = [...projects]
 
-    // Apply search filter
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase()
       result = result.filter(p =>
@@ -130,7 +94,6 @@ export function Dashboard({ onProjectClick, onNewProject }) {
       )
     }
 
-    // Apply status filter
     switch (filter) {
       case 'active':
         result = result.filter(p => p.service_count > 0)
@@ -142,7 +105,6 @@ export function Dashboard({ onProjectClick, onNewProject }) {
         break
     }
 
-    // Apply sorting
     result.sort((a, b) => {
       switch (sortBy) {
         case 'name_asc':
@@ -153,8 +115,6 @@ export function Dashboard({ onProjectClick, onNewProject }) {
           return new Date(a.created_at) - new Date(b.created_at)
         case 'created_desc':
           return new Date(b.created_at) - new Date(a.created_at)
-        case 'services_asc':
-          return (a.service_count || 0) - (b.service_count || 0)
         case 'services_desc':
           return (b.service_count || 0) - (a.service_count || 0)
         default:
@@ -165,16 +125,7 @@ export function Dashboard({ onProjectClick, onNewProject }) {
     return result
   }, [projects, searchQuery, filter, sortBy])
 
-  const toggleSelectAll = () => {
-    if (selectedProjects.size === filteredAndSortedProjects.length) {
-      setSelectedProjects(new Set())
-    } else {
-      setSelectedProjects(new Set(filteredAndSortedProjects.map(p => p.id)))
-    }
-  }
-
   const getProjectStatus = (project) => {
-    // Derive status from service_count or other factors
     if (project.service_count === 0) return 'offline'
     return 'online'
   }
@@ -184,8 +135,7 @@ export function Dashboard({ onProjectClick, onNewProject }) {
       online: 'RUNNING',
       offline: 'NO SERVICES',
       warning: 'DEGRADED',
-      error: 'FAILED',
-      pending: 'DEPLOYING'
+      error: 'FAILED'
     }
     return statusMap[status] || 'UNKNOWN'
   }
@@ -195,7 +145,7 @@ export function Dashboard({ onProjectClick, onNewProject }) {
       <div className="flex items-center justify-center py-20">
         <div className="text-center">
           <TerminalSpinner className="text-2xl" />
-          <p className="font-mono text-terminal-muted mt-4">Loading projects...</p>
+          <p className="font-mono text-terminal-muted mt-4">Loading dashboard...</p>
         </div>
       </div>
     )
@@ -203,28 +153,31 @@ export function Dashboard({ onProjectClick, onNewProject }) {
 
   if (error) {
     return (
-      <div className="flex flex-col items-center justify-center py-20">
-        <p className="font-mono text-terminal-red mb-4">! {error}</p>
-        <TerminalButton variant="secondary" onClick={loadProjects}>
-          [ RETRY ]
-        </TerminalButton>
-      </div>
+      <ErrorDisplay
+        error={error}
+        onRetry={loadDashboardData}
+        title="Dashboard Error"
+      />
     )
   }
 
+  const hasErrors = healthData?.errors?.length > 0
+  const hasWarnings = healthData?.warnings?.length > 0
+  const hasActiveDeployments = healthData?.activeDeployments?.length > 0
+  const summary = healthData?.summary || { running: 0, deploying: 0, warning: 0, failed: 0 }
+
   return (
     <div className="space-y-6">
-      {/* Header Section */}
+      {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
           <h1 className="font-mono text-xl text-terminal-primary text-glow-green uppercase tracking-terminal-wide">
-            PROJECTS DASHBOARD
+            SYSTEM DASHBOARD
           </h1>
           <p className="font-mono text-sm text-terminal-muted mt-1">
-            {filteredAndSortedProjects.length} of {projects.length} project(s)
+            Health overview and system status
           </p>
         </div>
-
         <TerminalButton variant="primary" onClick={onNewProject}>
           [ NEW PROJECT ]
         </TerminalButton>
@@ -237,153 +190,250 @@ export function Dashboard({ onProjectClick, onNewProject }) {
           { status: 'active', label: 'NETWORK' },
           { status: 'online', label: 'STORAGE' }
         ]}
-        className="mb-4"
       />
+
+      {/* Service Health Summary */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="border border-terminal-green/50 bg-terminal-green/10 p-3 text-center">
+          <div className="font-mono text-2xl text-terminal-green">{summary.running}</div>
+          <div className="font-mono text-xs text-terminal-muted">RUNNING</div>
+        </div>
+        <div className={`border p-3 text-center ${summary.deploying > 0 ? 'border-terminal-cyan/50 bg-terminal-cyan/10' : 'border-terminal-border bg-terminal-bg-secondary'}`}>
+          <div className={`font-mono text-2xl ${summary.deploying > 0 ? 'text-terminal-cyan animate-pulse' : 'text-terminal-muted'}`}>{summary.deploying}</div>
+          <div className="font-mono text-xs text-terminal-muted">DEPLOYING</div>
+        </div>
+        <div className={`border p-3 text-center ${summary.warning > 0 ? 'border-terminal-amber/50 bg-terminal-amber/10' : 'border-terminal-border bg-terminal-bg-secondary'}`}>
+          <div className={`font-mono text-2xl ${summary.warning > 0 ? 'text-terminal-amber' : 'text-terminal-muted'}`}>{summary.warning}</div>
+          <div className="font-mono text-xs text-terminal-muted">WARNING</div>
+        </div>
+        <div className={`border p-3 text-center ${summary.failed > 0 ? 'border-terminal-red/50 bg-terminal-red/10' : 'border-terminal-border bg-terminal-bg-secondary'}`}>
+          <div className={`font-mono text-2xl ${summary.failed > 0 ? 'text-terminal-red' : 'text-terminal-muted'}`}>{summary.failed}</div>
+          <div className="font-mono text-xs text-terminal-muted">FAILED</div>
+        </div>
+      </div>
 
       <TerminalDivider variant="double" color="green" />
 
-      {/* Search and Filters */}
-      <div className="flex flex-col lg:flex-row gap-4">
-        <div className="flex-1">
-          <TerminalInput
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search projects..."
-            className="w-full"
+      {/* Errors & Warnings Section */}
+      {(hasErrors || hasWarnings) && (
+        <>
+          <TerminalSection
+            title="ERRORS & WARNINGS"
+            collapsed={errorsCollapsed}
+            onToggle={() => setErrorsCollapsed(!errorsCollapsed)}
+            color="red"
           />
-        </div>
-        <div className="w-full lg:w-48">
-          <TerminalSelect
-            options={FILTER_OPTIONS}
-            value={filter}
-            onChange={(e) => setFilter(e.target.value)}
-          />
-        </div>
-        <div className="w-full lg:w-48">
-          <TerminalSelect
-            options={SORT_OPTIONS}
-            value={sortBy}
-            onChange={(e) => setSortBy(e.target.value)}
-          />
-        </div>
-      </div>
 
-      {/* Bulk Actions */}
-      {selectedProjects.size > 0 && (
-        <div className="flex items-center gap-4 p-3 bg-terminal-bg-secondary border border-terminal-border">
-          <span className="font-mono text-sm text-terminal-primary">
-            {selectedProjects.size} selected
-          </span>
-          <TerminalButton
-            variant="danger"
-            size="sm"
-            onClick={() => setShowBulkDeleteModal(true)}
-          >
-            [ DELETE SELECTED ]
-          </TerminalButton>
-          <TerminalButton
-            variant="secondary"
-            size="sm"
-            onClick={() => setSelectedProjects(new Set())}
-          >
-            [ CLEAR ]
-          </TerminalButton>
-        </div>
+          {!errorsCollapsed && (
+            <div className="space-y-2">
+              {healthData.errors.map((err, idx) => (
+                <div
+                  key={`error-${idx}`}
+                  className="flex items-start gap-3 p-3 border border-terminal-red/50 bg-terminal-red/10 cursor-pointer hover:bg-terminal-red/20 transition-colors"
+                  onClick={() => onServiceClick?.(err.service.id)}
+                >
+                  <span className="font-mono text-terminal-red text-lg">[!]</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-mono text-sm text-terminal-primary">
+                      <span className="text-terminal-red">{err.service.name}</span>
+                      <span className="text-terminal-muted"> / {err.project.name}</span>
+                    </div>
+                    <p className="font-mono text-xs text-terminal-muted truncate mt-1">
+                      {err.message}
+                    </p>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        onServiceClick?.(err.service.id, 'logs')
+                      }}
+                      className="font-mono text-xs text-terminal-cyan hover:text-terminal-primary"
+                    >
+                      [LOGS]
+                    </button>
+                  </div>
+                </div>
+              ))}
+
+              {healthData.warnings.map((warn, idx) => (
+                <div
+                  key={`warning-${idx}`}
+                  className="flex items-start gap-3 p-3 border border-terminal-amber/50 bg-terminal-amber/10 cursor-pointer hover:bg-terminal-amber/20 transition-colors"
+                  onClick={() => onServiceClick?.(warn.service.id)}
+                >
+                  <span className="font-mono text-terminal-amber text-lg">[~]</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-mono text-sm text-terminal-primary">
+                      <span className="text-terminal-amber">{warn.service.name}</span>
+                      <span className="text-terminal-muted"> / {warn.project.name}</span>
+                    </div>
+                    <p className="font-mono text-xs text-terminal-muted truncate mt-1">
+                      {warn.message || 'Health check failing'}
+                    </p>
+                  </div>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      onServiceClick?.(warn.service.id)
+                    }}
+                    className="font-mono text-xs text-terminal-cyan hover:text-terminal-primary"
+                  >
+                    [VIEW]
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
       )}
+
+      {/* Status Banner */}
+      {!hasErrors && !hasWarnings && (
+        summary.running > 0 ? (
+          <div className="flex items-center gap-3 p-3 border border-terminal-green/50 bg-terminal-green/10">
+            <span className="font-mono text-terminal-green text-lg">[OK]</span>
+            <span className="font-mono text-sm text-terminal-primary">
+              All systems operational - no issues detected
+            </span>
+          </div>
+        ) : summary.deploying > 0 ? null : (
+          <div className="flex items-center gap-3 p-3 border border-terminal-muted/50 bg-terminal-bg-secondary">
+            <span className="font-mono text-terminal-muted text-lg">[~]</span>
+            <span className="font-mono text-sm text-terminal-muted">
+              No services running - deploy your first service to get started
+            </span>
+          </div>
+        )
+      )}
+
+      {/* Active Deployments Section */}
+      {hasActiveDeployments && (
+        <>
+          <TerminalSection
+            title="ACTIVE DEPLOYMENTS"
+            collapsed={deploymentsCollapsed}
+            onToggle={() => setDeploymentsCollapsed(!deploymentsCollapsed)}
+            color="cyan"
+          />
+
+          {!deploymentsCollapsed && (
+            <div className="space-y-2">
+              {healthData.activeDeployments.map((dep, idx) => (
+                <div
+                  key={`deploy-${idx}`}
+                  className="flex items-center gap-3 p-3 border border-terminal-cyan/50 bg-terminal-cyan/10 cursor-pointer hover:bg-terminal-cyan/20 transition-colors"
+                  onClick={() => onServiceClick?.(dep.service.id, 'logs')}
+                >
+                  <span className="font-mono text-terminal-cyan animate-pulse">[*]</span>
+                  <div className="flex-1">
+                    <span className="font-mono text-sm text-terminal-primary">
+                      {dep.service.name}
+                    </span>
+                    <span className="font-mono text-sm text-terminal-muted"> / {dep.project.name}</span>
+                  </div>
+                  <span className="font-mono text-xs text-terminal-cyan uppercase">
+                    {dep.status}...
+                  </span>
+                  <span className="font-mono text-xs text-terminal-muted">
+                    {formatRelativeTime(dep.startedAt)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+
+      {/* Recent Activity */}
+      {healthData?.recentActivity?.length > 0 && (
+        <TerminalCard title="Recent Activity" variant="green">
+          <div className="space-y-2">
+            {healthData.recentActivity.map((activity, idx) => (
+              <div
+                key={`activity-${idx}`}
+                className="flex items-center gap-3 font-mono text-sm cursor-pointer hover:bg-terminal-bg-secondary p-1 -mx-1 transition-colors"
+                onClick={() => onServiceClick?.(activity.service.id)}
+              >
+                <span className="text-terminal-green">OK</span>
+                <span className="text-terminal-primary">{activity.service.name}</span>
+                <span className="text-terminal-muted">deployed</span>
+                <span className="text-terminal-secondary ml-auto">{formatRelativeTime(activity.timestamp)}</span>
+              </div>
+            ))}
+          </div>
+        </TerminalCard>
+      )}
+
+      <TerminalDivider variant="single" color="muted" />
 
       {/* Projects Section */}
       <TerminalSection
-        title="Projects"
-        collapsed={viewCollapsed}
-        onToggle={() => setViewCollapsed(!viewCollapsed)}
+        title="PROJECTS"
+        collapsed={projectsCollapsed}
+        onToggle={() => setProjectsCollapsed(!projectsCollapsed)}
         color="amber"
+        badge={`${filteredAndSortedProjects.length}`}
       />
 
-      {!viewCollapsed && (
-        <div className="mt-4">
+      {!projectsCollapsed && (
+        <>
+          {/* Search and Filters */}
+          <div className="flex flex-col lg:flex-row gap-3 mt-4">
+            <div className="flex-1">
+              <TerminalInput
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search projects..."
+                className="w-full"
+              />
+            </div>
+            <div className="w-full lg:w-40">
+              <TerminalSelect
+                options={FILTER_OPTIONS}
+                value={filter}
+                onChange={(e) => setFilter(e.target.value)}
+              />
+            </div>
+            <div className="w-full lg:w-40">
+              <TerminalSelect
+                options={SORT_OPTIONS}
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value)}
+              />
+            </div>
+          </div>
+
           {filteredAndSortedProjects.length === 0 ? (
-            <div className="text-center py-12 border border-terminal-border bg-terminal-bg-secondary">
-              <p className="font-mono text-terminal-muted mb-4">
-                {searchQuery || filter !== 'all'
-                  ? 'No projects match your filters.'
-                  : 'No projects yet.'}
-              </p>
-              {!searchQuery && filter === 'all' && (
+            <EmptyState
+              icon="[+]"
+              title={searchQuery || filter !== 'all' ? 'No projects match filters' : 'No projects yet'}
+              description={!searchQuery && filter === 'all' ? 'Create your first project to get started' : null}
+              action={!searchQuery && filter === 'all' && (
                 <TerminalButton variant="primary" onClick={onNewProject}>
-                  [ CREATE YOUR FIRST PROJECT ]
+                  [ CREATE PROJECT ]
                 </TerminalButton>
               )}
-            </div>
+              className="mt-4"
+            />
           ) : (
-            <>
-              {/* Select All Header */}
-              <div className="flex items-center gap-3 mb-4 pb-2 border-b border-terminal-border">
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={selectedProjects.size === filteredAndSortedProjects.length && filteredAndSortedProjects.length > 0}
-                    onChange={toggleSelectAll}
-                    className="w-4 h-4 accent-terminal-primary"
-                  />
-                  <span className="font-mono text-xs text-terminal-muted uppercase">
-                    Select All
-                  </span>
-                </label>
-              </div>
-
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {filteredAndSortedProjects.map((project) => (
-                  <ProjectCard
-                    key={project.id}
-                    project={project}
-                    selected={selectedProjects.has(project.id)}
-                    onSelect={() => toggleProjectSelection(project.id)}
-                    onClick={() => onProjectClick?.(project)}
-                    onDelete={() => setShowDeleteModal(project)}
-                    formatDate={formatDate}
-                    getStatus={getProjectStatus}
-                    getStatusText={getProjectStatusText}
-                  />
-                ))}
-              </div>
-            </>
+            <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4 mt-4">
+              {filteredAndSortedProjects.map((project) => (
+                <ProjectCard
+                  key={project.id}
+                  project={project}
+                  onClick={() => onProjectClick?.(project)}
+                  onDelete={() => setShowDeleteModal(project)}
+                  getStatus={getProjectStatus}
+                  getStatusText={getProjectStatusText}
+                />
+              ))}
+            </div>
           )}
-        </div>
+        </>
       )}
 
-      {/* Quick Stats */}
-      <TerminalDivider variant="single" color="muted" className="my-6" />
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <TerminalCard title="Total Services" variant="green">
-          <div className="text-center">
-            <span className="font-mono text-3xl text-terminal-primary text-glow-green">
-              {projects.reduce((acc, p) => acc + (p.service_count || 0), 0)}
-            </span>
-            <p className="font-mono text-xs text-terminal-muted mt-1">ACTIVE SERVICES</p>
-          </div>
-        </TerminalCard>
-
-        <TerminalCard title="Active Projects" variant="amber">
-          <div className="text-center">
-            <span className="font-mono text-3xl text-terminal-secondary text-glow-amber">
-              {projects.filter(p => p.service_count > 0).length}
-            </span>
-            <p className="font-mono text-xs text-terminal-muted mt-1">WITH SERVICES</p>
-          </div>
-        </TerminalCard>
-
-        <TerminalCard title="Total Projects" variant="green">
-          <div className="text-center">
-            <span className="font-mono text-3xl text-terminal-primary text-glow-green">
-              {projects.length}
-            </span>
-            <p className="font-mono text-xs text-terminal-muted mt-1">PROJECTS</p>
-          </div>
-        </TerminalCard>
-      </div>
-
-      {/* Delete Confirmation Modal */}
+      {/* Delete Modal */}
       {showDeleteModal && (
         <TerminalModal title="CONFIRM DELETE" variant="red">
           <p className="font-mono text-terminal-primary mb-2">
@@ -410,109 +460,53 @@ export function Dashboard({ onProjectClick, onNewProject }) {
           </div>
         </TerminalModal>
       )}
-
-      {/* Bulk Delete Modal */}
-      {showBulkDeleteModal && (
-        <TerminalModal title="CONFIRM BULK DELETE" variant="red">
-          <p className="font-mono text-terminal-primary mb-2">
-            Delete {selectedProjects.size} project(s)?
-          </p>
-          <p className="font-mono text-xs text-terminal-muted mb-6">
-            This will delete all services and deployments for these projects. This action cannot be undone.
-          </p>
-          <div className="flex justify-end gap-3">
-            <TerminalButton
-              variant="secondary"
-              onClick={() => setShowBulkDeleteModal(false)}
-              disabled={deleting}
-            >
-              [ CANCEL ]
-            </TerminalButton>
-            <TerminalButton
-              variant="danger"
-              onClick={handleBulkDelete}
-              disabled={deleting}
-            >
-              {deleting ? '[ DELETING... ]' : '[ DELETE ALL ]'}
-            </TerminalButton>
-          </div>
-        </TerminalModal>
-      )}
     </div>
   )
 }
 
-function ProjectCard({ project, selected, onSelect, onClick, onDelete, formatDate, getStatus, getStatusText }) {
+function ProjectCard({ project, onClick, onDelete, getStatus, getStatusText }) {
   const status = getStatus(project)
 
   return (
-    <div className="relative">
-      {/* Selection Checkbox */}
-      <div className="absolute top-0 left-0 z-10 p-2">
-        <input
-          type="checkbox"
-          checked={selected}
-          onChange={(e) => {
-            e.stopPropagation()
-            onSelect()
-          }}
-          onClick={(e) => e.stopPropagation()}
-          className="w-4 h-4 accent-terminal-primary cursor-pointer"
+    <div
+      className="border border-terminal-border bg-terminal-bg-secondary p-4 cursor-pointer hover:border-terminal-primary hover:shadow-[var(--glow-green)] transition-all duration-150"
+      onClick={onClick}
+    >
+      <div className="flex items-start justify-between gap-3 mb-3">
+        <div className="min-w-0">
+          <h3 className="font-mono text-sm text-terminal-primary uppercase truncate">
+            {project.name}
+          </h3>
+          <p className="font-mono text-xs text-terminal-muted truncate">
+            {project.namespace}
+          </p>
+        </div>
+        <StatusIndicator
+          status={status}
+          label={getStatusText(status)}
+          size="sm"
         />
       </div>
 
-      <div
-        className={`cursor-pointer transition-all duration-150 hover:shadow-[var(--glow-green)] ${
-          selected ? 'ring-2 ring-terminal-primary' : ''
-        }`}
-        onClick={onClick}
-      >
-        <div className="font-mono whitespace-pre text-terminal-muted select-none text-sm">
-          +-- {(project.name || 'UNNAMED').toUpperCase().padEnd(36, '-')}--+
-        </div>
+      <div className="flex items-center justify-between font-mono text-xs">
+        <span className="text-terminal-secondary">
+          {project.service_count || 0} service(s)
+        </span>
+        <span className="text-terminal-muted">
+          {formatRelativeTime(project.created_at)}
+        </span>
+      </div>
 
-        <div className="border-l border-r border-terminal-muted px-4 py-3 bg-terminal-bg-secondary">
-          {/* Status Row */}
-          <div className="flex items-center justify-between mb-3 pl-6">
-            <StatusIndicator
-              status={status}
-              label={getStatusText(status)}
-              size="sm"
-            />
-            <span className="font-mono text-xs text-terminal-muted">
-              {project.service_count || 0} service(s)
-            </span>
-          </div>
-
-          {/* Namespace */}
-          <div className="mb-3 pl-6">
-            <span className="font-mono text-xs text-terminal-muted">NAMESPACE: </span>
-            <span className="font-mono text-xs text-terminal-secondary">{project.namespace}</span>
-          </div>
-
-          {/* Created Date */}
-          <div className="flex items-center justify-between font-mono text-xs pl-6">
-            <span className="text-terminal-muted">CREATED:</span>
-            <span className="text-terminal-secondary">{formatDate(project.created_at)}</span>
-          </div>
-
-          {/* Delete Button */}
-          <div className="mt-3 pt-3 border-t border-terminal-border pl-6">
-            <button
-              onClick={(e) => {
-                e.stopPropagation()
-                onDelete()
-              }}
-              className="font-mono text-xs text-terminal-red hover:text-terminal-red/80 transition-colors"
-            >
-              [DELETE]
-            </button>
-          </div>
-        </div>
-
-        <div className="font-mono whitespace-pre text-terminal-muted select-none text-sm">
-          +{'--'.repeat(21)}+
-        </div>
+      <div className="mt-3 pt-3 border-t border-terminal-border flex justify-end">
+        <button
+          onClick={(e) => {
+            e.stopPropagation()
+            onDelete()
+          }}
+          className="font-mono text-xs text-terminal-red hover:text-terminal-red/80 transition-colors"
+        >
+          [DELETE]
+        </button>
       </div>
     </div>
   )
@@ -520,7 +514,8 @@ function ProjectCard({ project, selected, onSelect, onClick, onDelete, formatDat
 
 Dashboard.propTypes = {
   onProjectClick: PropTypes.func.isRequired,
-  onNewProject: PropTypes.func.isRequired
+  onNewProject: PropTypes.func.isRequired,
+  onServiceClick: PropTypes.func
 }
 
 ProjectCard.propTypes = {
@@ -531,11 +526,8 @@ ProjectCard.propTypes = {
     service_count: PropTypes.number,
     created_at: PropTypes.string
   }).isRequired,
-  selected: PropTypes.bool,
-  onSelect: PropTypes.func.isRequired,
   onClick: PropTypes.func.isRequired,
   onDelete: PropTypes.func.isRequired,
-  formatDate: PropTypes.func.isRequired,
   getStatus: PropTypes.func.isRequired,
   getStatusText: PropTypes.func.isRequired
 }

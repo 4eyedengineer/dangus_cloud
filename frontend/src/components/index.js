@@ -1,5 +1,6 @@
 export { AsciiLogo } from './AsciiLogo'
 export { ErrorBoundary } from './ErrorBoundary'
+export { ErrorDisplay, InlineError, EmptyState } from './ErrorDisplay'
 export { TerminalCard, TerminalDivider, TerminalSection, TerminalModal } from './TerminalCard'
 export {
   StatusIndicator,

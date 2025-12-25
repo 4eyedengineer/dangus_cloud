@@ -126,10 +126,16 @@ function SettingsPage({ user, onLogout }) {
 function DashboardPage() {
   const navigate = useNavigate()
 
+  const handleServiceClick = (serviceId, tab = 'overview') => {
+    const basePath = `/services/${serviceId}`
+    navigate(tab === 'overview' ? basePath : `${basePath}/${tab}`)
+  }
+
   return (
     <Dashboard
       onProjectClick={(project) => navigate(`/projects/${project.id}`)}
       onNewProject={() => navigate('/projects/new')}
+      onServiceClick={handleServiceClick}
     />
   )
 }

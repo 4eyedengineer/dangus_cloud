@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { TerminalCard, TerminalDivider } from '../components/TerminalCard'
 import { StatusIndicator } from '../components/StatusIndicator'
+import { ErrorDisplay } from '../components/ErrorDisplay'
 import TerminalButton from '../components/TerminalButton'
 import TerminalSpinner from '../components/TerminalSpinner'
 import TerminalTabs from '../components/TerminalTabs'
@@ -139,15 +140,39 @@ export function ServiceDetail({ serviceId, activeTab = 'overview', onTabChange, 
 
   const loadServiceData = async () => {
     try {
-      const [serviceData, envData, deploymentsData] = await Promise.all([
+      // Use Promise.allSettled for partial failure resilience
+      const [serviceResult, envResult, deploymentsResult] = await Promise.allSettled([
         fetchService(serviceId),
         fetchEnvVars(serviceId),
         fetchDeployments(serviceId)
       ])
-      setService(serviceData)
-      setEnvVars(envData)
-      setDeployments(deploymentsData.deployments || [])
+
+      // Service data is critical - if it fails, show error
+      if (serviceResult.status === 'rejected') {
+        const err = serviceResult.reason
+        setError(err instanceof ApiError ? err.message : 'Failed to load service')
+        toast.error('Failed to load service data')
+        return
+      }
+
+      setService(serviceResult.value)
       setError(null)
+
+      // Env vars - graceful degradation with warning
+      if (envResult.status === 'fulfilled') {
+        setEnvVars(envResult.value)
+      } else {
+        setEnvVars([])
+        toast.warning('Failed to load environment variables')
+      }
+
+      // Deployments - graceful degradation with warning
+      if (deploymentsResult.status === 'fulfilled') {
+        setDeployments(deploymentsResult.value.deployments || [])
+      } else {
+        setDeployments([])
+        toast.warning('Failed to load deployment history')
+      }
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Failed to load service')
       toast.error('Failed to load service data')
@@ -265,17 +290,12 @@ export function ServiceDetail({ serviceId, activeTab = 'overview', onTabChange, 
 
   if (error) {
     return (
-      <div className="flex flex-col items-center justify-center py-20">
-        <p className="font-mono text-terminal-red mb-4">! {error}</p>
-        <div className="flex gap-3">
-          <TerminalButton variant="secondary" onClick={onBack}>
-            [ BACK ]
-          </TerminalButton>
-          <TerminalButton variant="secondary" onClick={loadServiceData}>
-            [ RETRY ]
-          </TerminalButton>
-        </div>
-      </div>
+      <ErrorDisplay
+        error={error}
+        onRetry={loadServiceData}
+        onBack={onBack}
+        title="Service Error"
+      />
     )
   }
 
