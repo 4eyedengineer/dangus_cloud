@@ -32,3 +32,7 @@ export { BranchSelector } from './BranchSelector'
 export { DigitalDebris, DigitalDebrisFill } from './DigitalDebris'
 export { CommandFlags } from './CommandFlags'
 export { SegmentedGauge, SegmentedGaugeCompact } from './SegmentedGauge'
+
+// Debug components
+export { DiffViewer, SimpleDiffViewer } from './DiffViewer'
+export { DebugSessionViewer } from './DebugSessionViewer'

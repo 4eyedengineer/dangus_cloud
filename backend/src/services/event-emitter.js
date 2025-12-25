@@ -105,6 +105,22 @@ class AppEventEmitter extends EventEmitter {
     this.emit('user:notifications', event);
     this.emit(`user:${userId}:notifications`, event);
   }
+
+  /**
+   * Emit a debug session status event
+   * @param {string} sessionId - Debug session UUID
+   * @param {object} payload - Debug status payload
+   */
+  emitDebugStatus(sessionId, payload) {
+    const event = {
+      channel: `debug:${sessionId}:status`,
+      timestamp: new Date().toISOString(),
+      payload
+    };
+    logger.debug('Emitting debug status event', { sessionId, status: payload.status });
+    this.emit('debug:status', event);
+    this.emit(`debug:${sessionId}:status`, event);
+  }
 }
 
 // Singleton instance

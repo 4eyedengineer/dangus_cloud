@@ -19,6 +19,7 @@ import {
 } from '../api/services'
 import { fetchEnvVars } from '../api/envVars'
 import { fetchDeployments } from '../api/deployments'
+import { startDebugSession, fetchServiceDebugSession } from '../api/debug'
 import { ApiError } from '../api/utils'
 import { useDeploymentStatus } from '../hooks/useDeploymentStatus'
 import { useWebSocket } from '../hooks/useWebSocket'
@@ -58,6 +59,10 @@ export function ServiceDetail({ serviceId, activeTab = 'overview', onTabChange, 
   const [fixingPort, setFixingPort] = useState(false)
   const [changingState, setChangingState] = useState(false)
   const [lastNotifiedStatus, setLastNotifiedStatus] = useState(null)
+
+  // Debug session state
+  const [activeDebugSession, setActiveDebugSession] = useState(null)
+  const [startingDebug, setStartingDebug] = useState(false)
 
   const toast = useToast()
   const { copy, copied } = useCopyToClipboard()
@@ -141,10 +146,11 @@ export function ServiceDetail({ serviceId, activeTab = 'overview', onTabChange, 
   const loadServiceData = async () => {
     try {
       // Use Promise.allSettled for partial failure resilience
-      const [serviceResult, envResult, deploymentsResult] = await Promise.allSettled([
+      const [serviceResult, envResult, deploymentsResult, debugResult] = await Promise.allSettled([
         fetchService(serviceId),
         fetchEnvVars(serviceId),
-        fetchDeployments(serviceId)
+        fetchDeployments(serviceId),
+        fetchServiceDebugSession(serviceId)
       ])
 
       // Service data is critical - if it fails, show error
@@ -172,6 +178,13 @@ export function ServiceDetail({ serviceId, activeTab = 'overview', onTabChange, 
       } else {
         setDeployments([])
         toast.warning('Failed to load deployment history')
+      }
+
+      // Debug session - graceful degradation (no warning, not critical)
+      if (debugResult.status === 'fulfilled') {
+        setActiveDebugSession(debugResult.value.session)
+      } else {
+        setActiveDebugSession(null)
       }
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Failed to load service')
@@ -242,6 +255,27 @@ export function ServiceDetail({ serviceId, activeTab = 'overview', onTabChange, 
     } finally {
       setFixingPort(false)
     }
+  }
+
+  const handleStartDebug = async () => {
+    if (!latestDeploymentId) return
+
+    setStartingDebug(true)
+    try {
+      const result = await startDebugSession(latestDeploymentId)
+      setActiveDebugSession({ id: result.sessionId, status: 'running' })
+      toast.success('Debug session started')
+    } catch (err) {
+      const message = err instanceof ApiError ? err.message : 'Failed to start debug session'
+      toast.error(message)
+    } finally {
+      setStartingDebug(false)
+    }
+  }
+
+  const handleDebugRetry = (newSessionId) => {
+    setActiveDebugSession({ id: newSessionId, status: 'running' })
+    toast.success('New debug session started')
   }
 
   const handleToggleState = async () => {
@@ -411,6 +445,7 @@ export function ServiceDetail({ serviceId, activeTab = 'overview', onTabChange, 
       {activeTab === 'overview' && (
         <ServiceOverview
           service={service}
+          latestDeployment={deployments[0]}
           latestDeploymentId={latestDeploymentId}
           showBuildLogs={showBuildLogs}
           hasActiveDeployment={hasActiveDeployment()}
@@ -420,6 +455,10 @@ export function ServiceDetail({ serviceId, activeTab = 'overview', onTabChange, 
           onDeploy={handleTriggerDeploy}
           deploying={deploying}
           onRefresh={loadServiceData}
+          activeDebugSession={activeDebugSession}
+          onStartDebug={handleStartDebug}
+          startingDebug={startingDebug}
+          onDebugRetry={handleDebugRetry}
         />
       )}
 

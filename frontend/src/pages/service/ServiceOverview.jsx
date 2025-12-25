@@ -1,10 +1,12 @@
 import { useState } from 'react'
 import { TerminalCard, TerminalSection } from '../../components/TerminalCard'
 import { BuildLogViewer } from '../../components/BuildLogViewer'
+import { DebugSessionViewer } from '../../components/DebugSessionViewer'
 import TerminalButton from '../../components/TerminalButton'
 
 export function ServiceOverview({
   service,
+  latestDeployment,
   latestDeploymentId,
   showBuildLogs,
   hasActiveDeployment,
@@ -13,7 +15,12 @@ export function ServiceOverview({
   fixingPort,
   onDeploy,
   deploying,
-  onRefresh
+  onRefresh,
+  // Debug session props
+  activeDebugSession,
+  onStartDebug,
+  startingDebug,
+  onDebugRetry,
 }) {
   const [buildLogsCollapsed, setBuildLogsCollapsed] = useState(false)
   const [validationCollapsed, setValidationCollapsed] = useState(true)
@@ -47,6 +54,40 @@ export function ServiceOverview({
             </TerminalButton>
           </div>
         </div>
+      )}
+
+      {/* AI Debug Session - shown when active */}
+      {activeDebugSession && (
+        <div className="mb-6">
+          <DebugSessionViewer
+            sessionId={activeDebugSession.id}
+            serviceUrl={service.url}
+            onRetry={onDebugRetry}
+          />
+        </div>
+      )}
+
+      {/* Build Failed - FIX WITH AI button */}
+      {latestDeployment?.status === 'failed' && !activeDebugSession && !hasActiveDeployment && (
+        <TerminalCard title="BUILD FAILED" variant="red" className="mb-6">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <p className="font-mono text-sm text-terminal-red mb-2">
+                The last build failed. AI can attempt to fix the issue automatically.
+              </p>
+              <p className="font-mono text-xs text-terminal-muted">
+                The AI will analyze build logs, modify Dockerfile and configs, and retry up to 10 times.
+              </p>
+            </div>
+            <TerminalButton
+              variant="primary"
+              onClick={onStartDebug}
+              disabled={startingDebug}
+            >
+              {startingDebug ? '[ STARTING... ]' : '[ FIX WITH AI ]'}
+            </TerminalButton>
+          </div>
+        </TerminalCard>
       )}
 
       {/* Build Logs Section - shown when deployment is active or user has toggled it */}

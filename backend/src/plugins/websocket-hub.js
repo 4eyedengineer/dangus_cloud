@@ -76,6 +76,18 @@ async function websocketHubPlugin(fastify, options) {
           return resourceId === userId;
         }
 
+        case 'debug': {
+          // Verify user owns the debug session's service's project
+          const result = await db.query(
+            `SELECT 1 FROM debug_sessions ds
+             JOIN services s ON ds.service_id = s.id
+             JOIN projects p ON s.project_id = p.id
+             WHERE ds.id = $1 AND p.user_id = $2`,
+            [resourceId, userId]
+          );
+          return result.rows.length > 0;
+        }
+
         default:
           return false;
       }
@@ -342,6 +354,13 @@ async function websocketHubPlugin(fastify, options) {
   });
 
   appEvents.on('user:notifications', (event) => {
+    wsManager.broadcast(event.channel, {
+      timestamp: event.timestamp,
+      payload: event.payload
+    });
+  });
+
+  appEvents.on('debug:status', (event) => {
     wsManager.broadcast(event.channel, {
       timestamp: event.timestamp,
       payload: event.payload

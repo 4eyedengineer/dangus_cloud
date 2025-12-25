@@ -14,6 +14,7 @@ import githubRoutes from './routes/github.js';
 import domainRoutes from './routes/domains.js';
 import notificationRoutes from './routes/notifications.js';
 import dockerfileRoutes from './routes/dockerfile.js';
+import debugRoutes from './routes/debug.js';
 import adminRoutes from './routes/admin.js';
 import healthRoutes from './routes/health.js';
 import { startMetricsCollection, stopMetricsCollection } from './services/metricsCollector.js';
@@ -121,6 +122,9 @@ fastify.register(notificationRoutes);
 
 // Register Dockerfile generation routes
 fastify.register(dockerfileRoutes);
+
+// Register debug agent routes
+fastify.register(debugRoutes);
 
 // Register admin routes (health, reconciliation)
 fastify.register(adminRoutes);

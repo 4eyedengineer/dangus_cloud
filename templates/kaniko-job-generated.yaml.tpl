@@ -81,20 +81,38 @@ spec:
             limits:
               memory: "512Mi"
               cpu: "500m"
-        # Copy the generated Dockerfile into the workspace
+        # Copy generated/modified files into the workspace
+        # Supports multi-file ConfigMaps where paths are escaped (src/nginx.conf -> src_nginx.conf)
         - name: copy-dockerfile
           image: busybox:1.36
           command:
             - /bin/sh
             - -c
             - |
-              cp /generated/Dockerfile /workspace/Dockerfile
-              if [ -f /generated/.dockerignore ]; then
-                cp /generated/.dockerignore /workspace/.dockerignore
+              echo "=== Copying files from ConfigMap ==="
+              for file in /generated/*; do
+                if [ -f "$file" ]; then
+                  filename=$(basename "$file")
+                  # Convert underscores back to slashes for nested paths
+                  # e.g., src_nginx.conf -> src/nginx.conf
+                  destpath=$(echo "$filename" | sed 's/_/\//g')
+                  # Security: Reject paths with .. or starting with /
+                  if echo "$destpath" | grep -qE '(^/|\.\.)'; then
+                    echo "SECURITY: Rejecting invalid path: $destpath"
+                    continue
+                  fi
+                  # Create parent directories if needed
+                  mkdir -p "$(dirname "/workspace/$destpath")"
+                  cp "$file" "/workspace/$destpath"
+                  echo "Copied: $destpath"
+                fi
+              done
+              echo "=== Files copied ==="
+              if [ -f /workspace/Dockerfile ]; then
+                echo "=== Dockerfile ==="
+                cat /workspace/Dockerfile
+                echo "=== End Dockerfile ==="
               fi
-              echo "=== Generated Dockerfile ==="
-              cat /workspace/Dockerfile
-              echo "=== End Dockerfile ==="
           volumeMounts:
             - name: workspace
               mountPath: /workspace
