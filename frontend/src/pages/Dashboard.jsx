@@ -9,6 +9,7 @@ import TerminalSpinner from '../components/TerminalSpinner'
 import { useToast } from '../components/Toast'
 import { fetchProjects, createProject, deleteProject } from '../api/projects'
 import { ApiError } from '../api/utils'
+import { formatDate } from '../utils'
 
 const FILTER_OPTIONS = [
   { value: 'all', label: 'All Projects' },
@@ -170,11 +171,6 @@ export function Dashboard({ onProjectClick, onNewProject }) {
     } else {
       setSelectedProjects(new Set(filteredAndSortedProjects.map(p => p.id)))
     }
-  }
-
-  const formatDate = (dateStr) => {
-    const date = new Date(dateStr)
-    return date.toISOString().replace('T', ' ').substring(0, 19)
   }
 
   const getProjectStatus = (project) => {

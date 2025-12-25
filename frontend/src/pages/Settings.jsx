@@ -11,6 +11,7 @@ import {
   sendTestNotification,
   getNotificationHistory
 } from '../api/notifications'
+import { formatDate } from '../utils'
 
 const PREFERENCES_KEY = 'dangus_cloud_preferences'
 
@@ -210,11 +211,6 @@ export function Settings({ user, onLogout }) {
     setDeleteConfirmText('')
   }
 
-  const formatDate = (dateStr) => {
-    if (!dateStr) return 'N/A'
-    const date = new Date(dateStr)
-    return date.toISOString().replace('T', ' ').substring(0, 19)
-  }
 
   return (
     <div className="space-y-6">

@@ -18,6 +18,7 @@ import { fetchDeployments } from '../api/deployments'
 import { ApiError } from '../api/utils'
 import { useDeploymentStatus } from '../hooks/useDeploymentStatus'
 import { useWebSocket } from '../hooks/useWebSocket'
+import { useCopyToClipboard, formatDate, getStatusText, getStatusIndicator } from '../utils'
 
 const SERVICE_TABS = [
   { id: 'overview', label: 'Overview' },
@@ -46,7 +47,6 @@ export function ServiceDetail({ serviceId, activeTab = 'overview', onTabChange, 
   const [showBuildLogs, setShowBuildLogs] = useState(false)
   const [containerLogsCollapsed, setContainerLogsCollapsed] = useState(false)
 
-  const [copied, setCopied] = useState(null)
   const [revealedSecrets, setRevealedSecrets] = useState({})
   const [webhookSecret, setWebhookSecret] = useState(null)
   const [webhookRevealed, setWebhookRevealed] = useState(false)
@@ -75,6 +75,7 @@ export function ServiceDetail({ serviceId, activeTab = 'overview', onTabChange, 
   const [changingState, setChangingState] = useState(false)
 
   const toast = useToast()
+  const { copy, copied } = useCopyToClipboard()
   const { connectionState: wsConnectionState, isConnected: wsIsConnected } = useWebSocket()
 
   // Get the latest deployment ID for log streaming and WebSocket subscription
@@ -201,32 +202,6 @@ export function ServiceDetail({ serviceId, activeTab = 'overview', onTabChange, 
       toast.error('Failed to load service')
     } finally {
       setLoading(false)
-    }
-  }
-
-  const handleCopy = async (text, key) => {
-    try {
-      // Try modern clipboard API first
-      if (navigator.clipboard && window.isSecureContext) {
-        await navigator.clipboard.writeText(text)
-      } else {
-        // Fallback for HTTP contexts - use textarea + execCommand
-        const textArea = document.createElement('textarea')
-        textArea.value = text
-        textArea.style.position = 'fixed'
-        textArea.style.left = '-999999px'
-        textArea.style.top = '-999999px'
-        document.body.appendChild(textArea)
-        textArea.focus()
-        textArea.select()
-        document.execCommand('copy')
-        textArea.remove()
-      }
-      setCopied(key)
-      setTimeout(() => setCopied(null), 2000)
-      toast.success('Copied to clipboard')
-    } catch (err) {
-      toast.error('Failed to copy to clipboard')
     }
   }
 
@@ -466,39 +441,6 @@ export function ServiceDetail({ serviceId, activeTab = 'overview', onTabChange, 
            deployment.id !== latestLiveDeployment?.id
   }
 
-  const formatDate = (dateStr) => {
-    const date = new Date(dateStr)
-    return date.toISOString().replace('T', ' ').substring(0, 19)
-  }
-
-  const getStatusText = (status) => {
-    const statusMap = {
-      online: 'RUNNING',
-      offline: 'STOPPED',
-      warning: 'DEGRADED',
-      error: 'FAILED',
-      pending: 'PENDING',
-      success: 'SUCCESS',
-      failed: 'FAILED',
-      live: 'LIVE',
-      building: 'BUILDING',
-      deploying: 'DEPLOYING'
-    }
-    return statusMap[status] || status?.toUpperCase() || 'UNKNOWN'
-  }
-
-  const getDeploymentStatusIndicator = (status) => {
-    switch (status) {
-      case 'live': return 'online'
-      case 'success': return 'online'
-      case 'failed': return 'error'
-      case 'pending':
-      case 'building':
-      case 'deploying': return 'pending'
-      default: return 'idle'
-    }
-  }
-
   const getServiceStatusIndicator = () => {
     if (service?.latest_deployment) {
       const status = service.latest_deployment.status
@@ -597,7 +539,7 @@ export function ServiceDetail({ serviceId, activeTab = 'overview', onTabChange, 
                 {service.url}
               </a>
               <button
-                onClick={() => handleCopy(service.url, 'service_url')}
+                onClick={() => copy(service.url, 'service_url')}
                 className="text-terminal-muted hover:text-terminal-primary text-xs"
               >
                 {copied === 'service_url' ? '[OK]' : '[COPY]'}
@@ -1049,7 +991,7 @@ export function ServiceDetail({ serviceId, activeTab = 'overview', onTabChange, 
                       </button>
                       {revealedSecrets[env.id] && (
                         <button
-                          onClick={() => handleCopy(revealedSecrets[env.id], env.id)}
+                          onClick={() => copy(revealedSecrets[env.id], env.id)}
                           className="text-terminal-muted hover:text-terminal-primary text-xs"
                         >
                           {copied === env.id ? '[OK]' : '[COPY]'}
@@ -1102,7 +1044,7 @@ export function ServiceDetail({ serviceId, activeTab = 'overview', onTabChange, 
                   {service.webhook_url}
                 </span>
                 <button
-                  onClick={() => handleCopy(service.webhook_url, 'webhook_url')}
+                  onClick={() => copy(service.webhook_url, 'webhook_url')}
                   className="text-terminal-muted hover:text-terminal-primary text-xs"
                 >
                   {copied === 'webhook_url' ? '[OK]' : '[COPY]'}
@@ -1123,7 +1065,7 @@ export function ServiceDetail({ serviceId, activeTab = 'overview', onTabChange, 
                 </button>
                 {webhookRevealed && webhookSecret && (
                   <button
-                    onClick={() => handleCopy(webhookSecret.webhook_secret, 'webhook_secret')}
+                    onClick={() => copy(webhookSecret.webhook_secret, 'webhook_secret')}
                     className="text-terminal-muted hover:text-terminal-primary text-xs"
                   >
                     {copied === 'webhook_secret' ? '[OK]' : '[COPY]'}
@@ -1197,7 +1139,7 @@ export function ServiceDetail({ serviceId, activeTab = 'overview', onTabChange, 
                         <span className="text-terminal-cyan" title="Rollback deployment">↩</span>
                       ) : (
                         <StatusIndicator
-                          status={getDeploymentStatusIndicator(deployment.status)}
+                          status={getStatusIndicator(deployment.status)}
                           showLabel={false}
                           size="sm"
                         />
@@ -1255,7 +1197,7 @@ export function ServiceDetail({ serviceId, activeTab = 'overview', onTabChange, 
                   {service.url}
                 </a>
                 <button
-                  onClick={() => handleCopy(service.url, 'info_url')}
+                  onClick={() => copy(service.url, 'info_url')}
                   className="text-terminal-muted hover:text-terminal-primary text-xs"
                 >
                   {copied === 'info_url' ? '[OK]' : '[COPY]'}

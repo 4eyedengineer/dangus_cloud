@@ -8,6 +8,7 @@ export {
   ActivityIndicator
 } from './StatusIndicator'
 export { Layout, Breadcrumb, SidebarMenu } from './Layout'
+export { ProjectQuickNav } from './ProjectQuickNav'
 export { ToastProvider, useToast, StandaloneToast } from './Toast'
 export { default as TerminalButton } from './TerminalButton'
 export { default as TerminalInput } from './TerminalInput'

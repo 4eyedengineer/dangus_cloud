@@ -3,6 +3,7 @@ import { useNavigate, useLocation, Link } from 'react-router-dom'
 import { AsciiLogo } from './AsciiLogo'
 import { DigitalDebrisFill } from './DigitalDebris'
 import { StatusIndicator } from './StatusIndicator'
+import { ProjectQuickNav } from './ProjectQuickNav'
 import { useWebSocket } from '../hooks/useWebSocket'
 
 export function Layout({
@@ -10,6 +11,7 @@ export function Layout({
   breadcrumbs = [],
   showSidebar = true,
   sidebarContent = null,
+  showProjectNav = true,
   navItems = [
     { label: 'Dashboard', href: '/', active: true },
     { label: 'Projects', href: '/projects' },
@@ -198,9 +200,14 @@ export function Layout({
         )}
       </header>
 
-      {/* Main content area with optional sidebar */}
+      {/* Main content area with optional sidebars */}
       <div className="flex-1 flex overflow-hidden">
-        {/* Sidebar (desktop only) */}
+        {/* Project Quick Nav (left sidebar, desktop only) */}
+        {showProjectNav && !isMobile && (
+          <ProjectQuickNav />
+        )}
+
+        {/* Context Sidebar (right sidebar, desktop only) */}
         {showSidebar && sidebarContent && !isMobile && (
           <aside
             className={`

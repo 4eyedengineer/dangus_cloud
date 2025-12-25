@@ -16,6 +16,13 @@ export async function createProject(name) {
   });
 }
 
+export async function updateProject(id, updates) {
+  return apiFetch(`/projects/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(updates),
+  });
+}
+
 export async function deleteProject(id) {
   return apiFetch(`/projects/${id}`, {
     method: 'DELETE',

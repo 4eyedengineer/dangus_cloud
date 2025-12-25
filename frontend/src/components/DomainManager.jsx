@@ -6,6 +6,7 @@ import { useToast } from './Toast'
 import { fetchDomains, addDomain, verifyDomain, deleteDomain, getDomain } from '../api/domains'
 import { ApiError } from '../api/utils'
 import { useWebSocket } from '../hooks/useWebSocket'
+import { useCopyToClipboard } from '../utils'
 
 export function DomainManager({ serviceId }) {
   const [domains, setDomains] = useState([])
@@ -20,9 +21,8 @@ export function DomainManager({ serviceId }) {
   const [showDeleteModal, setShowDeleteModal] = useState(null)
   const [showVerifyInfo, setShowVerifyInfo] = useState(null)
 
-  const [copied, setCopied] = useState(null)
-
   const toast = useToast()
+  const { copy, copied } = useCopyToClipboard()
   const { connectionState, subscribe, isConnected } = useWebSocket()
   const pollIntervalRef = useRef(null)
 
@@ -113,17 +113,6 @@ export function DomainManager({ serviceId }) {
       toast.error('Failed to load domains')
     } finally {
       setLoading(false)
-    }
-  }
-
-  const handleCopy = async (text, key) => {
-    try {
-      await navigator.clipboard.writeText(text)
-      setCopied(key)
-      setTimeout(() => setCopied(null), 2000)
-      toast.success('Copied to clipboard')
-    } catch (err) {
-      toast.error('Failed to copy to clipboard')
     }
   }
 
@@ -256,7 +245,7 @@ export function DomainManager({ serviceId }) {
                         </span>
                         {domain.verification_target && (
                           <button
-                            onClick={() => handleCopy(domain.verification_target, `target-${domain.id}`)}
+                            onClick={() => copy(domain.verification_target, `target-${domain.id}`)}
                             className="text-terminal-muted hover:text-terminal-text text-xs ml-2"
                           >
                             {copied === `target-${domain.id}` ? '[COPIED]' : '[COPY]'}
