@@ -10,6 +10,7 @@ import {
   fetchDebugSession,
   cancelDebugSession,
   retryDebugSession,
+  rollbackDebugSession,
 } from '../api/debug';
 
 /**
@@ -32,7 +33,9 @@ export function DebugSessionViewer({
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [retrying, setRetrying] = useState(false);
-  const [copySuccess, setCopySuccess] = useState(false);
+const [copySuccess, setCopySuccess] = useState(false);
+  const [rollingBack, setRollingBack] = useState(false);
+  const [rolledBack, setRolledBack] = useState(false);
 
   // WebSocket hook for real-time updates
   const session = useDebugSession(sessionId);
@@ -102,6 +105,19 @@ export function DebugSessionViewer({
       setTimeout(() => setCopySuccess(false), 2000);
     } catch (err) {
       console.error('Failed to copy:', err);
+    }
+  };
+
+  // Handle rollback
+  const handleRollback = async () => {
+    try {
+      setRollingBack(true);
+      await rollbackDebugSession(sessionId);
+      setRolledBack(true);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setRollingBack(false);
     }
   };
 
@@ -176,6 +192,19 @@ export function DebugSessionViewer({
 
   // SUCCESS STATE
   if (session.isSucceeded()) {
+    // Show rolled back confirmation
+    if (rolledBack) {
+      return (
+        <TerminalCard title="CHANGES ROLLED BACK" variant="amber" className={className}>
+          <div className="space-y-4">
+            <div className="text-terminal-secondary font-mono text-sm">
+              Original files have been restored. Deploy again to apply.
+            </div>
+          </div>
+        </TerminalCard>
+      );
+    }
+
     return (
       <TerminalCard title="FIXED & DEPLOYED" variant="green" glow className={className}>
         <div className="space-y-4">
@@ -212,6 +241,13 @@ export function DebugSessionViewer({
               onClick={handleCopyChanges}
             >
               {copySuccess ? '[ COPIED! ]' : '[ COPY CHANGES ]'}
+            </TerminalButton>
+            <TerminalButton
+              variant="danger"
+              onClick={handleRollback}
+              disabled={rollingBack}
+            >
+              {rollingBack ? '[ ROLLING BACK... ]' : '[ ROLLBACK ]'}
             </TerminalButton>
           </div>
         </div>

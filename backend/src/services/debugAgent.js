@@ -726,3 +726,50 @@ export async function getDebugAttempts(db, sessionId) {
 
   return result.rows;
 }
+
+/**
+ * Rollback a debug session to restore original files
+ * @param {object} db - Database connection
+ * @param {object} session - Debug session object (must include original_files)
+ * @returns {Promise<{success: boolean, restoredFiles: string[]}>}
+ */
+export async function rollbackDebugSession(db, session) {
+  const originalFiles = typeof session.original_files === 'string'
+    ? JSON.parse(session.original_files)
+    : session.original_files;
+
+  if (!originalFiles || Object.keys(originalFiles).length === 0) {
+    throw new Error('No original files to restore');
+  }
+
+  const restoredFiles = [];
+
+  for (const [filename, content] of Object.entries(originalFiles)) {
+    const fileType = filename === 'Dockerfile' ? 'dockerfile' :
+                     filename === '.dockerignore' ? 'dockerignore' : null;
+    if (fileType && content) {
+      await storeGeneratedFile(db, session.service_id, fileType, content);
+      restoredFiles.push(filename);
+    }
+  }
+
+  await db.query(`
+    UPDATE debug_sessions
+    SET status = 'rolled_back', updated_at = NOW()
+    WHERE id = $1
+  `, [session.id]);
+
+  logger.info({
+    sessionId: session.id,
+    serviceId: session.service_id,
+    restoredFiles
+  }, 'Debug session rolled back');
+
+  appEvents.emitDebugStatus(session.id, {
+    status: 'rolled_back',
+    message: 'Original files restored',
+    restoredFiles
+  });
+
+  return { success: true, restoredFiles };
+}

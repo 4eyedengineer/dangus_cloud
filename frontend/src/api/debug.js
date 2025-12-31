@@ -52,6 +52,17 @@ export async function retryDebugSession(sessionId) {
 }
 
 /**
+ * Rollback a debug session to restore original files
+ * @param {string} sessionId - Debug session UUID
+ * @returns {Promise<{success: boolean, sessionId: string, restoredFiles: string[]}>}
+ */
+export async function rollbackDebugSession(sessionId) {
+  return apiFetch(`/debug-sessions/${sessionId}/rollback`, {
+    method: 'POST',
+  });
+}
+
+/**
  * Get active or most recent debug session for a service
  * @param {string} serviceId - Service UUID
  * @returns {Promise<{session: object | null}>}
