@@ -33,6 +33,7 @@ export function DebugSessionViewer({
   const [showAttempts, setShowAttempts] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [retrying, setRetrying] = useState(false);
+  const [copySuccess, setCopySuccess] = useState(false);
 
   // WebSocket hook for real-time updates
   const session = useDebugSession(sessionId);
@@ -90,14 +91,20 @@ export function DebugSessionViewer({
   };
 
   // Copy changes to clipboard
-  const handleCopyChanges = () => {
+  const handleCopyChanges = async () => {
     if (!session.fileChanges || session.fileChanges.length === 0) return;
 
-    const patch = session.fileChanges.map(file => {
-      return `--- a/${file.path}\n+++ b/${file.path}\n${file.content}`;
-    }).join('\n\n');
+    const text = session.fileChanges.map(file =>
+      `=== ${file.path} ===\n${file.content}`
+    ).join('\n\n');
 
-    navigator.clipboard.writeText(patch);
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopySuccess(true);
+      setTimeout(() => setCopySuccess(false), 2000);
+    } catch (err) {
+      console.error('Failed to copy:', err);
+    }
   };
 
   if (loading) {
@@ -206,7 +213,7 @@ export function DebugSessionViewer({
               variant="secondary"
               onClick={handleCopyChanges}
             >
-              [ COPY CHANGES ]
+              {copySuccess ? '[ COPIED! ]' : '[ COPY CHANGES ]'}
             </TerminalButton>
           </div>
         </div>
