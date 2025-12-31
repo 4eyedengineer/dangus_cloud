@@ -1,7 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { getRepoTree, getFileContent, parseGitHubUrl } from './github.js';
 import { getGeneratedFile } from './dockerfileGenerator.js';
-import { upsertConfigMap, deleteConfigMap } from './kubernetes.js';
+import { upsertConfigMap, deleteConfigMap, getPodLogs, getPodEvents, getPodHealth, getDeploymentSpec } from './kubernetes.js';
 import { triggerBuild, watchBuildJob, captureBuildLogs, deployService, getDecryptedEnvVars } from './buildPipeline.js';
 import { updateDeploymentStatus } from './deploymentService.js';
 import appEvents from './event-emitter.js';
@@ -27,11 +27,20 @@ function getClient() {
 }
 
 /**
- * System prompt for debug agent
+ * System prompt for debug agent - generalist for all failure phases
  */
-const DEBUG_SYSTEM_PROMPT = `You are an expert DevOps engineer debugging failed Docker builds.
+const DEBUG_SYSTEM_PROMPT = `You are an expert DevOps engineer debugging deployment failures.
 
-Analyze the build logs to understand why the build failed. Fix it by modifying the minimum necessary files.
+You will be given context about a failure including:
+- PHASE: build, startup, runtime, or health (tells you what kind of failure)
+- BUILD_LOGS: Container build output (if build phase)
+- POD_LOGS: Application container logs (if startup/runtime/health phase)
+- POD_EVENTS: Kubernetes events (scheduling, crashes, OOM, probe failures)
+- POD_HEALTH: Current pod status and restart counts
+- DEPLOYMENT_SPEC: Kubernetes deployment configuration
+- REPO_CONTEXT: Repository structure and key files
+
+Analyze all provided context to understand the root cause. The PHASE tells you where in the lifecycle the failure occurred, but use ALL context to reason about the fix.
 
 SAFETY:
 - NEVER create or modify .env, secrets, credentials, or keys
@@ -43,10 +52,78 @@ OUTPUT FORMAT - respond with valid JSON only:
   "fileChanges": [
     {"path": "Dockerfile", "content": "FROM node:20-alpine\\n..."}
   ],
-  "needsManualFix": false
+  "needsManualFix": false,
+  "suggestedActions": ["Optional array of manual steps if needsManualFix is true"]
 }
 
-If the issue cannot be fixed automatically (e.g., source code bug, missing dependencies in user code), set needsManualFix: true and explain what the user needs to do.`;
+Set needsManualFix: true when:
+- Source code bugs that require human judgment
+- Missing external dependencies (APIs, databases)
+- Configuration issues outside the repository
+- Resource limits that need human decision
+- Authentication/secrets issues
+
+When needsManualFix is true, provide clear suggestedActions for the user.`;
+
+/**
+ * Determine the failure phase based on deployment and pod state
+ * @param {object} deployment - Deployment record
+ * @param {Array} podHealth - Pod health array from getPodHealth
+ * @returns {string} Phase: build, startup, runtime, or health
+ */
+export function determineFailurePhase(deployment, podHealth) {
+  if (deployment.status === 'failed' && deployment.build_logs && !deployment.image_tag) {
+    return 'build';
+  }
+  if (podHealth && podHealth.length > 0) {
+    const pod = podHealth[0];
+    if (pod.waitingReason === 'CrashLoopBackOff' ||
+        pod.waitingReason === 'Error' ||
+        (pod.restartCount > 0 && pod.terminatedExitCode !== 0)) {
+      return 'startup';
+    }
+    if (pod.phase === 'Running' &&
+        (pod.liveness?.status === 'failing' || pod.readiness?.status === 'failing')) {
+      return 'health';
+    }
+    if (pod.restartCount > 2 && pod.phase !== 'Running') {
+      return 'runtime';
+    }
+  }
+  if (deployment.build_logs) {
+    return 'build';
+  }
+  return 'startup';
+}
+
+/**
+ * Gather diagnostic context based on failure phase
+ */
+export async function gatherDiagnosticContext(db, service, deployment, phase, namespace) {
+  const context = { phase, buildLogs: null, podLogs: null, podEvents: null, podHealth: null, deploymentSpec: null };
+  const labelSelector = `app=${service.name}`;
+  if (phase !== 'build') {
+    try {
+      context.podHealth = await getPodHealth(namespace, labelSelector);
+      context.podEvents = await getPodEvents(namespace, labelSelector, 50);
+      context.deploymentSpec = await getDeploymentSpec(namespace, service.name);
+      if (context.podHealth && context.podHealth.length > 0) {
+        const podName = context.podHealth[0].name;
+        try {
+          context.podLogs = await getPodLogs(namespace, podName, { tailLines: 200, previous: context.podHealth[0].restartCount > 0 });
+        } catch (logErr) {
+          logger.warn({ podName, error: logErr.message }, 'Failed to fetch pod logs');
+        }
+      }
+    } catch (err) {
+      logger.warn({ phase, error: err.message }, 'Failed to gather runtime context');
+    }
+  }
+  if (deployment.build_logs) {
+    context.buildLogs = deployment.build_logs;
+  }
+  return context;
+}
 
 /**
  * Start a new debug session for a failed deployment

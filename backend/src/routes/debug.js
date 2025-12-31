@@ -169,10 +169,12 @@ export default async function debugRoutes(fastify, options) {
 
     const { deployment } = ownershipCheck;
 
-    // Check deployment is in failed state
-    if (deployment.status !== 'failed') {
+    // Check deployment is in a debuggable state (failed build or runtime issues)
+    // Allow: 'failed' (build failure), 'running' (runtime crash), 'deployed' (health issues)
+    const debuggableStatuses = ['failed', 'running', 'deployed'];
+    if (!debuggableStatuses.includes(deployment.status)) {
       return reply.code(400).send({
-        error: 'Can only debug failed deployments',
+        error: 'Can only debug failed or running deployments with issues',
         currentStatus: deployment.status,
       });
     }
