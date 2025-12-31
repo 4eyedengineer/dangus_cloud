@@ -18,6 +18,8 @@ export function useDebugSession(sessionId, initialSession = null) {
   const [finalExplanation, setFinalExplanation] = useState(initialSession?.finalExplanation || null);
   const [message, setMessage] = useState(null);
   const [lastUpdate, setLastUpdate] = useState(null);
+  const [totalTokens, setTotalTokens] = useState(initialSession?.totalTokens || 0);
+  const [estimatedCost, setEstimatedCost] = useState(initialSession?.estimatedCost || '0.0000');
 
   const { subscribe, isConnected } = useWebSocket();
 
@@ -49,6 +51,12 @@ export function useDebugSession(sessionId, initialSession = null) {
       }
       if (payload.message) {
         setMessage(payload.message);
+      }
+      if (payload.totalTokens !== undefined) {
+        setTotalTokens(payload.totalTokens);
+      }
+      if (payload.estimatedCost !== undefined) {
+        setEstimatedCost(payload.estimatedCost);
       }
       setLastUpdate(timestamp || new Date().toISOString());
     });
@@ -118,6 +126,8 @@ export function useDebugSession(sessionId, initialSession = null) {
     finalExplanation,
     message,
     lastUpdate,
+    totalTokens,
+    estimatedCost,
 
     // Helpers
     isRunning,

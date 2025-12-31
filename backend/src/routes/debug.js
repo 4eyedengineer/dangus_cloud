@@ -230,6 +230,15 @@ export default async function debugRoutes(fastify, options) {
   });
 
   /**
+   * Calculate estimated cost from token count
+   * Uses blended rate of ~$18/1M tokens (conservative: $3 input + $15 output avg)
+   */
+  function calculateEstimatedCost(tokens) {
+    const COST_PER_MILLION_TOKENS = 18;
+    return (tokens / 1000000) * COST_PER_MILLION_TOKENS;
+  }
+
+  /**
    * GET /debug-sessions/:sessionId
    * Get debug session state
    */
@@ -246,6 +255,16 @@ export default async function debugRoutes(fastify, options) {
 
     const { session } = ownershipCheck;
 
+    // Aggregate token usage from all attempts
+    const tokenResult = await fastify.db.query(
+      `SELECT COALESCE(SUM(tokens_used), 0) as total_tokens
+       FROM debug_attempts WHERE session_id = $1`,
+      [sessionId]
+    );
+
+    const totalTokens = parseInt(tokenResult.rows[0].total_tokens);
+    const estimatedCost = calculateEstimatedCost(totalTokens);
+
     return {
       id: session.id,
       deploymentId: session.deployment_id,
@@ -257,6 +276,8 @@ export default async function debugRoutes(fastify, options) {
       finalExplanation: session.final_explanation,
       createdAt: session.created_at,
       updatedAt: session.updated_at,
+      totalTokens,
+      estimatedCost: estimatedCost.toFixed(4),
     };
   });
 
@@ -523,6 +544,17 @@ export default async function debugRoutes(fastify, options) {
     }
 
     const session = sessionResult.rows[0];
+
+    // Aggregate token usage from all attempts
+    const tokenResult = await fastify.db.query(
+      `SELECT COALESCE(SUM(tokens_used), 0) as total_tokens
+       FROM debug_attempts WHERE session_id = $1`,
+      [session.id]
+    );
+
+    const totalTokens = parseInt(tokenResult.rows[0].total_tokens);
+    const estimatedCost = calculateEstimatedCost(totalTokens);
+
     return {
       session: {
         id: session.id,
@@ -534,6 +566,8 @@ export default async function debugRoutes(fastify, options) {
         finalExplanation: session.final_explanation,
         createdAt: session.created_at,
         updatedAt: session.updated_at,
+        totalTokens,
+        estimatedCost: estimatedCost.toFixed(4),
       },
     };
   });
