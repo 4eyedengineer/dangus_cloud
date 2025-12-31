@@ -190,6 +190,16 @@ const [copySuccess, setCopySuccess] = useState(false);
     );
   }
 
+  // Helper to render token/cost info
+  const renderTokenInfo = () => {
+    if (!session.totalTokens || session.totalTokens === 0) return null;
+    return (
+      <div className="font-mono text-xs text-terminal-muted border-t border-terminal-border pt-2 mt-2">
+        Tokens: {session.totalTokens.toLocaleString()} | Est. cost: ${session.estimatedCost}
+      </div>
+    );
+  };
+
   // SUCCESS STATE
   if (session.isSucceeded()) {
     // Show rolled back confirmation
@@ -250,6 +260,8 @@ const [copySuccess, setCopySuccess] = useState(false);
               {rollingBack ? '[ ROLLING BACK... ]' : '[ ROLLBACK ]'}
             </TerminalButton>
           </div>
+
+          {renderTokenInfo()}
         </div>
       </TerminalCard>
     );
@@ -291,6 +303,8 @@ const [copySuccess, setCopySuccess] = useState(false);
                 [ VIEW ALL {session.maxAttempts} ATTEMPTS ]
               </TerminalButton>
             </div>
+
+            {renderTokenInfo()}
           </div>
         </TerminalCard>
 
@@ -321,6 +335,8 @@ const [copySuccess, setCopySuccess] = useState(false);
               {retrying ? '[ STARTING... ]' : '[ TRY AGAIN ]'}
             </TerminalButton>
           </div>
+
+          {renderTokenInfo()}
         </div>
       </TerminalCard>
     );
