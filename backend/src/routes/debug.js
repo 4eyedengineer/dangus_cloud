@@ -9,7 +9,61 @@ import {
 } from '../services/debugAgent.js';
 import { decrypt } from '../services/encryption.js';
 
+// Rate limit constants
+const MAX_CONCURRENT_SESSIONS = 3;
+const MAX_SESSIONS_PER_HOUR = 10;
+
 export default async function debugRoutes(fastify, options) {
+  /**
+   * Check rate limits for debug session creation
+   * Returns { allowed: true } or { allowed: false, error: string }
+   */
+  async function checkRateLimits(userId) {
+    // Check concurrent running sessions
+    const concurrentResult = await fastify.db.query(
+      `SELECT COUNT(*) FROM debug_sessions
+       WHERE service_id IN (
+         SELECT id FROM services WHERE project_id IN (
+           SELECT id FROM projects WHERE user_id = $1
+         )
+       ) AND status = 'running'`,
+      [userId]
+    );
+
+    const concurrentCount = parseInt(concurrentResult.rows[0].count);
+    if (concurrentCount >= MAX_CONCURRENT_SESSIONS) {
+      return {
+        allowed: false,
+        error: `Too many concurrent debug sessions (max ${MAX_CONCURRENT_SESSIONS})`,
+        currentConcurrent: concurrentCount,
+        maxConcurrent: MAX_CONCURRENT_SESSIONS,
+      };
+    }
+
+    // Check hourly rate limit
+    const hourlyResult = await fastify.db.query(
+      `SELECT COUNT(*) FROM debug_sessions
+       WHERE service_id IN (
+         SELECT id FROM services WHERE project_id IN (
+           SELECT id FROM projects WHERE user_id = $1
+         )
+       ) AND created_at > NOW() - INTERVAL '1 hour'`,
+      [userId]
+    );
+
+    const hourlyCount = parseInt(hourlyResult.rows[0].count);
+    if (hourlyCount >= MAX_SESSIONS_PER_HOUR) {
+      return {
+        allowed: false,
+        error: `Rate limit exceeded (max ${MAX_SESSIONS_PER_HOUR} sessions per hour)`,
+        currentHourly: hourlyCount,
+        maxHourly: MAX_SESSIONS_PER_HOUR,
+      };
+    }
+
+    return { allowed: true, currentConcurrent: concurrentCount, currentHourly: hourlyCount };
+  }
+
   const deploymentParamsSchema = {
     params: {
       type: 'object',
@@ -93,6 +147,18 @@ export default async function debugRoutes(fastify, options) {
   }, async (request, reply) => {
     const userId = request.user.id;
     const deploymentId = request.params.id;
+
+    // Check rate limits first
+    const rateLimitCheck = await checkRateLimits(userId);
+    if (!rateLimitCheck.allowed) {
+      return reply.code(429).send({
+        error: rateLimitCheck.error,
+        currentConcurrent: rateLimitCheck.currentConcurrent,
+        maxConcurrent: rateLimitCheck.maxConcurrent,
+        currentHourly: rateLimitCheck.currentHourly,
+        maxHourly: rateLimitCheck.maxHourly,
+      });
+    }
 
     // Verify ownership and get full deployment info
     const ownershipCheck = await verifyDeploymentOwnership(deploymentId, userId);
@@ -267,6 +333,18 @@ export default async function debugRoutes(fastify, options) {
   }, async (request, reply) => {
     const userId = request.user.id;
     const sessionId = request.params.sessionId;
+
+    // Check rate limits first
+    const rateLimitCheck = await checkRateLimits(userId);
+    if (!rateLimitCheck.allowed) {
+      return reply.code(429).send({
+        error: rateLimitCheck.error,
+        currentConcurrent: rateLimitCheck.currentConcurrent,
+        maxConcurrent: rateLimitCheck.maxConcurrent,
+        currentHourly: rateLimitCheck.currentHourly,
+        maxHourly: rateLimitCheck.maxHourly,
+      });
+    }
 
     const ownershipCheck = await verifySessionOwnership(sessionId, userId);
     if (ownershipCheck.error) {
