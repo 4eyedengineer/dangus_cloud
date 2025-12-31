@@ -8,7 +8,7 @@ import appEvents from './event-emitter.js';
 import logger from './logger.js';
 
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
-const DEBUG_MODEL = 'claude-sonnet-4-5';
+const DEBUG_MODEL = process.env.DEBUG_MODEL || 'claude-sonnet-4-5-20250929';
 const MAX_TOKENS = 8000;
 
 let client = null;
