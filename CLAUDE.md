@@ -84,7 +84,7 @@ Update the cookie with `./dev auth <cookie>` when you get a new session.
 
 ## Multi-Issue Features
 
-For features spanning multiple issues, use `/worktree-issue <N>` to work in isolated git worktrees. See `.claude/docs/parallel-agent-orchestration.md` for spawning parallel agents.
+For features spanning multiple issues, use `/worktree-issue <N>` to work in isolated git worktrees. The `orchestrating-parallel-agents` skill provides workflow for spawning parallel agents.
 
 ## Do Not
 
