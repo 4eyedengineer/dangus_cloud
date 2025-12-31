@@ -91,7 +91,7 @@ export default async function debugRoutes(fastify, options) {
   async function verifyDeploymentOwnership(deploymentId, userId) {
     const result = await fastify.db.query(
       `SELECT d.*, s.id as service_id, s.name as service_name, s.repo_url, s.branch,
-              p.user_id, p.name as project_name, u.github_token
+              p.user_id, p.name as project_name, u.github_access_token
        FROM deployments d
        JOIN services s ON d.service_id = s.id
        JOIN projects p ON s.project_id = p.id
@@ -118,7 +118,7 @@ export default async function debugRoutes(fastify, options) {
   async function verifySessionOwnership(sessionId, userId) {
     const result = await fastify.db.query(
       `SELECT ds.*, s.name as service_name, s.repo_url, s.branch,
-              p.user_id, p.name as project_name, u.github_token
+              p.user_id, p.name as project_name, u.github_access_token
        FROM debug_sessions ds
        JOIN services s ON ds.service_id = s.id
        JOIN projects p ON s.project_id = p.id
@@ -202,7 +202,7 @@ export default async function debugRoutes(fastify, options) {
       const service = serviceResult.rows[0];
 
       // Decrypt GitHub token
-      const githubToken = decrypt(deployment.github_token);
+      const githubToken = decrypt(deployment.github_access_token);
 
       // Run debug loop asynchronously (don't await)
       runDebugLoop(
@@ -434,7 +434,7 @@ export default async function debugRoutes(fastify, options) {
     // Get deployment and service info
     const deploymentResult = await fastify.db.query(
       `SELECT d.*, s.id as service_id, s.name as service_name, s.repo_url, s.branch,
-              p.name as project_name, u.github_token
+              p.name as project_name, u.github_access_token
        FROM deployments d
        JOIN services s ON d.service_id = s.id
        JOIN projects p ON s.project_id = p.id
@@ -465,7 +465,7 @@ export default async function debugRoutes(fastify, options) {
       const service = serviceResult.rows[0];
 
       // Decrypt GitHub token
-      const githubToken = decrypt(deployment.github_token);
+      const githubToken = decrypt(deployment.github_access_token);
 
       // Run debug loop asynchronously
       runDebugLoop(
