@@ -3,7 +3,7 @@ import { getRepoTree, getFileContent, parseGitHubUrl } from './github.js';
 import { getGeneratedFile } from './dockerfileGenerator.js';
 import { upsertConfigMap, deleteConfigMap } from './kubernetes.js';
 import { triggerBuild, watchBuildJob, captureBuildLogs, deployService, getDecryptedEnvVars } from './buildPipeline.js';
-import { updateDeploymentStatus } from '../routes/deployments.js';
+import { updateDeploymentStatus } from './deploymentService.js';
 import appEvents from './event-emitter.js';
 import logger from './logger.js';
 

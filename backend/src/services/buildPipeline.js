@@ -20,7 +20,7 @@ import {
 } from './manifestGenerator.js';
 import { parseGitHubUrl, getDockerfileExposedPort } from './github.js';
 import { getGeneratedFile } from './dockerfileGenerator.js';
-import { updateDeploymentStatus } from '../routes/deployments.js';
+import { updateDeploymentStatus } from './deploymentService.js';
 import { decrypt } from './encryption.js';
 import { sendDeploymentNotification } from './notifications.js';
 import appEvents from './event-emitter.js';
