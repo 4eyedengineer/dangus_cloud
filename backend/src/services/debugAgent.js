@@ -170,7 +170,7 @@ export async function runDebugLoop(db, session, service, deployment, githubToken
 
       // Apply file changes and rebuild
       const buildResult = await rebuildWithChanges(
-        db, service, deployment, llmResult.fileChanges,
+        db, session.id, service, deployment, llmResult.fileChanges,
         githubToken, namespace, projectName
       );
 
@@ -348,7 +348,7 @@ Be concise and actionable.`;
 /**
  * Apply file changes and trigger a new build
  */
-async function rebuildWithChanges(db, service, deployment, fileChanges, githubToken, namespace, projectName) {
+async function rebuildWithChanges(db, sessionId, service, deployment, fileChanges, githubToken, namespace, projectName) {
   // Create ConfigMap with all file changes
   const configMapName = `debug-files-${service.name}-${Date.now()}`;
   const configMapData = {};
@@ -376,8 +376,22 @@ async function rebuildWithChanges(db, service, deployment, fileChanges, githubTo
       db, service, deployment, deployment.commit_sha, githubToken, namespace, configMapName
     );
 
+    // Track current job in session for cancellation
+    await db.query(`
+      UPDATE debug_sessions
+      SET current_job_name = $1, current_namespace = $2, updated_at = NOW()
+      WHERE id = $3
+    `, [jobName, namespace, sessionId]);
+
     // Watch build
     const buildResult = await watchBuildJob(db, namespace, jobName, deployment.id, gitSecretName);
+
+    // Clear job tracking after build completes
+    await db.query(`
+      UPDATE debug_sessions
+      SET current_job_name = NULL, current_namespace = NULL, updated_at = NOW()
+      WHERE id = $1
+    `, [sessionId]);
 
     // Cleanup ConfigMap
     await deleteConfigMap(namespace, configMapName).catch(() => {});
@@ -615,9 +629,36 @@ async function updateAttemptResult(db, attemptId, succeeded, buildLogs) {
  * Cancel a running debug session
  */
 export async function cancelDebugSession(db, sessionId) {
+  // Get session with current job info before updating status
+  const sessionResult = await db.query(`
+    SELECT current_job_name, current_namespace FROM debug_sessions
+    WHERE id = $1 AND status = 'running'
+  `, [sessionId]);
+
+  if (sessionResult.rows.length === 0) {
+    throw new Error('Session not found or not running');
+  }
+
+  const { current_job_name, current_namespace } = sessionResult.rows[0];
+
+  // Terminate running Kaniko job if one exists (non-blocking)
+  if (current_job_name && current_namespace) {
+    const { deleteJob } = await import('./kubernetes.js');
+    deleteJob(current_namespace, current_job_name, 'Background')
+      .then(() => {
+        logger.info({ sessionId, jobName: current_job_name, namespace: current_namespace },
+          'Terminated Kaniko job on debug session cancel');
+      })
+      .catch((err) => {
+        logger.warn({ sessionId, jobName: current_job_name, error: err.message },
+          'Failed to terminate Kaniko job on debug session cancel');
+      });
+  }
+
+  // Update session status
   const result = await db.query(`
     UPDATE debug_sessions
-    SET status = 'cancelled', updated_at = NOW()
+    SET status = 'cancelled', current_job_name = NULL, current_namespace = NULL, updated_at = NOW()
     WHERE id = $1 AND status = 'running'
     RETURNING *
   `, [sessionId]);
