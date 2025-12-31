@@ -2,6 +2,7 @@ import {
   startDebugSession,
   runDebugLoop,
   cancelDebugSession,
+  rollbackDebugSession,
   getDebugSession,
   getDebugSessionByDeployment,
   getActiveDebugSession,
@@ -321,6 +322,55 @@ export default async function debugRoutes(fastify, options) {
     } catch (error) {
       fastify.log.error({ error: error.message }, 'Failed to cancel debug session');
       return reply.code(500).send({ error: 'Failed to cancel session' });
+    }
+  });
+
+  /**
+   * POST /debug-sessions/:sessionId/rollback
+   * Rollback debug session changes and restore original files
+   */
+  fastify.post('/debug-sessions/:sessionId/rollback', {
+    schema: sessionParamsSchema,
+  }, async (request, reply) => {
+    const userId = request.user.id;
+    const sessionId = request.params.sessionId;
+
+    const ownershipCheck = await verifySessionOwnership(sessionId, userId);
+    if (ownershipCheck.error) {
+      return reply.code(ownershipCheck.status).send({ error: ownershipCheck.error });
+    }
+
+    const { session } = ownershipCheck;
+
+    // Only allow rollback on succeeded sessions (where AI made changes)
+    if (session.status !== 'succeeded') {
+      return reply.code(400).send({
+        error: 'Can only rollback succeeded sessions',
+        currentStatus: session.status,
+      });
+    }
+
+    // Check if there are original files to restore
+    const originalFiles = typeof session.original_files === 'string'
+      ? JSON.parse(session.original_files || '{}')
+      : (session.original_files || {});
+
+    if (Object.keys(originalFiles).length === 0) {
+      return reply.code(400).send({
+        error: 'No original files to restore',
+      });
+    }
+
+    try {
+      const result = await rollbackDebugSession(fastify.db, session);
+      return {
+        success: true,
+        sessionId,
+        restoredFiles: result.restoredFiles,
+      };
+    } catch (error) {
+      fastify.log.error({ error: error.message }, 'Failed to rollback debug session');
+      return reply.code(500).send({ error: 'Failed to rollback session' });
     }
   });
 
