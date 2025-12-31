@@ -59,6 +59,9 @@ export function useDebugSession(sessionId, initialSession = null) {
       if (payload.estimatedCost !== undefined) {
         setEstimatedCost(payload.estimatedCost);
       }
+      if (payload.suggestedActions) {
+        setSuggestedActions(payload.suggestedActions);
+      }
       setLastUpdate(timestamp || new Date().toISOString());
     });
 
@@ -106,7 +109,7 @@ export function useDebugSession(sessionId, initialSession = null) {
    * Check if session is in a terminal state
    */
   const isComplete = useCallback(() => {
-    return ['succeeded', 'failed', 'cancelled', 'error'].includes(status);
+    return ['succeeded', 'failed', 'cancelled', 'error', 'needs_manual_fix'].includes(status);
   }, [status]);
 
   /**

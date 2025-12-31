@@ -229,10 +229,11 @@ export async function runDebugLoop(db, session, service, deployment, githubToken
           maxAttempts: session.max_attempts,
           status: 'needs_manual_fix',
           explanation: llmResult.explanation,
+          suggestedActions: llmResult.suggestedActions || [],
           message: 'Issue requires manual fix by the user'
         });
 
-        return { success: false, attempts: attempt, needsManualFix: true, explanation: llmResult.explanation };
+        return { success: false, attempts: attempt, needsManualFix: true, explanation: llmResult.explanation, suggestedActions: llmResult.suggestedActions || [] };
       }
 
       // Emit progress - applying changes
