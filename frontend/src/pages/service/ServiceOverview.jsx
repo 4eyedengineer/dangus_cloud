@@ -63,6 +63,7 @@ export function ServiceOverview({
             sessionId={activeDebugSession.id}
             serviceUrl={service.url}
             onRetry={onDebugRetry}
+            onComplete={() => onRefresh?.()}
           />
         </div>
       )}
