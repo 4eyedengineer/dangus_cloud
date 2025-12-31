@@ -4,11 +4,22 @@ Self-hosted PaaS for deploying containerized apps from GitHub repos (like Railwa
 
 **Goal:** Make it dead simple to go from GitHub repo to running service. Minimize clicks, hide complexity, sensible defaults. If a user has to read docs to deploy, we've failed.
 
-Always plan to maximize concurrent tool/agent use.
+## Development Philosophy
 
-Reaach for code-reviewer,  playwright-ux-tester, and llm-philosophy-architect agents to deligate and lean on.
+**Parallel-first mindset.** For non-trivial features:
+1. Break work into multiple GitHub issues (1-3 files each)
+2. Organize into waves (independent changes first, dependent changes later)
+3. Spawn parallel agents using `/worktree-issue <N>` in isolated git worktrees
+4. Merge sequentially, rebasing between same-file conflicts
 
-Always respond as concisely as possible, keeping critical points.
+Use the `orchestrating-parallel-agents` skill for the full workflow.
+
+**Delegate to specialized agents:**
+- `code-reviewer` - Review code changes before committing
+- `playwright-ux-tester` - Validate UI flows and UX
+- `llm-philosophy-architect` - Design LLM integration strategy
+
+Always maximize concurrent tool/agent use. Respond concisely.
 
 ## Stack
 
@@ -81,10 +92,6 @@ await page.goto('http://192.168.1.124:5173');
 ```
 
 Update the cookie with `./dev auth <cookie>` when you get a new session.
-
-## Multi-Issue Features
-
-For features spanning multiple issues, use `/worktree-issue <N>` to work in isolated git worktrees. The `orchestrating-parallel-agents` skill provides workflow for spawning parallel agents.
 
 ## Do Not
 
