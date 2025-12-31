@@ -20,6 +20,7 @@ export function useDebugSession(sessionId, initialSession = null) {
   const [lastUpdate, setLastUpdate] = useState(null);
   const [totalTokens, setTotalTokens] = useState(initialSession?.totalTokens || 0);
   const [estimatedCost, setEstimatedCost] = useState(initialSession?.estimatedCost || '0.0000');
+  const [suggestedActions, setSuggestedActions] = useState(initialSession?.suggestedActions || []);
 
   const { subscribe, isConnected } = useWebSocket();
 
@@ -57,6 +58,9 @@ export function useDebugSession(sessionId, initialSession = null) {
       }
       if (payload.estimatedCost !== undefined) {
         setEstimatedCost(payload.estimatedCost);
+      }
+      if (payload.suggestedActions) {
+        setSuggestedActions(payload.suggestedActions);
       }
       setLastUpdate(timestamp || new Date().toISOString());
     });
@@ -105,7 +109,7 @@ export function useDebugSession(sessionId, initialSession = null) {
    * Check if session is in a terminal state
    */
   const isComplete = useCallback(() => {
-    return ['succeeded', 'failed', 'cancelled', 'error'].includes(status);
+    return ['succeeded', 'failed', 'cancelled', 'error', 'needs_manual_fix'].includes(status);
   }, [status]);
 
   /**
@@ -128,6 +132,7 @@ export function useDebugSession(sessionId, initialSession = null) {
     lastUpdate,
     totalTokens,
     estimatedCost,
+    suggestedActions,
 
     // Helpers
     isRunning,

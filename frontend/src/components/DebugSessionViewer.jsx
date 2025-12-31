@@ -267,6 +267,56 @@ const [copySuccess, setCopySuccess] = useState(false);
     );
   }
 
+  // NEEDS MANUAL FIX STATE
+  if (session.needsManualFix()) {
+    return (
+      <TerminalCard title="MANUAL FIX REQUIRED" variant="amber" glow className={className}>
+        <div className="space-y-4">
+          <div className="text-terminal-secondary font-mono text-sm">
+            The AI determined this issue requires manual intervention.
+          </div>
+
+          {session.explanation && (
+            <TerminalSection
+              title="ANALYSIS"
+              variant="amber"
+              defaultCollapsed={false}
+            >
+              <pre className="text-terminal-muted text-xs whitespace-pre-wrap">
+                {session.explanation}
+              </pre>
+            </TerminalSection>
+          )}
+
+          {session.suggestedActions && session.suggestedActions.length > 0 && (
+            <TerminalSection
+              title="SUGGESTED ACTIONS"
+              variant="cyan"
+              defaultCollapsed={false}
+            >
+              <ul className="text-terminal-muted text-xs space-y-1 list-disc list-inside">
+                {session.suggestedActions.map((action, idx) => (
+                  <li key={idx}>{action}</li>
+                ))}
+              </ul>
+            </TerminalSection>
+          )}
+
+          <div className="flex justify-center gap-4 pt-2">
+            <TerminalButton
+              variant="secondary"
+              onClick={() => setShowHistoryModal(true)}
+            >
+              [ VIEW ATTEMPTS ]
+            </TerminalButton>
+          </div>
+
+          {renderTokenInfo()}
+        </div>
+      </TerminalCard>
+    );
+  }
+
   // FAILED STATE
   if (session.isFailed()) {
     return (

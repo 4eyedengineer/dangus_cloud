@@ -496,14 +496,36 @@ export async function getPodHealth(namespace, labelSelector) {
     const readyCondition = conditions.find(c => c.type === 'Ready');
     const containersReadyCondition = conditions.find(c => c.type === 'ContainersReady');
 
-    // Get container info for restart count
+    // Get container info for restart count and state
     const mainContainer = containerStatuses[0] || {};
+    const containerState = mainContainer.state || {};
+    const lastState = mainContainer.lastState || {};
+
+    // Detect crash loop or other waiting states
+    let waitingReason = null;
+    let terminatedReason = null;
+    let terminatedExitCode = null;
+
+    if (containerState.waiting) {
+      waitingReason = containerState.waiting.reason;
+    }
+    if (containerState.terminated) {
+      terminatedReason = containerState.terminated.reason;
+      terminatedExitCode = containerState.terminated.exitCode;
+    }
+    if (lastState.terminated) {
+      terminatedReason = terminatedReason || lastState.terminated.reason;
+      terminatedExitCode = terminatedExitCode ?? lastState.terminated.exitCode;
+    }
 
     return {
       name: pod.metadata.name,
       ready: readyCondition?.status === 'True',
       phase: pod.status?.phase,
       restartCount: mainContainer.restartCount || 0,
+      waitingReason,
+      terminatedReason,
+      terminatedExitCode,
       liveness: {
         status: containersReadyCondition?.status === 'True' ? 'passing' : 'failing',
         lastCheck: containersReadyCondition?.lastTransitionTime || null,
@@ -522,9 +544,10 @@ export async function getPodHealth(namespace, labelSelector) {
  * Get events for pods in a namespace with a specific label
  * @param {string} namespace - Kubernetes namespace
  * @param {string} labelSelector - Label selector (e.g., "app=servicename")
+ * @param {number} limit - Maximum number of events to return (default 20)
  * @returns {Promise<Array>} Array of relevant events
  */
-export async function getPodEvents(namespace, labelSelector) {
+export async function getPodEvents(namespace, labelSelector, limit = 20) {
   // Get pods first to get their names
   const podsResult = await getPodsByLabel(namespace, labelSelector);
   const pods = podsResult.items || [];
@@ -538,17 +561,19 @@ export async function getPodEvents(namespace, labelSelector) {
   const eventsResult = await k8sRequest('GET', `/api/v1/namespaces/${namespace}/events`);
   const events = eventsResult.items || [];
 
-  // Filter events related to our pods and probe failures
+  // Filter events related to our pods - include all runtime-relevant event types
   return events
     .filter(event => {
       const involvedName = event.involvedObject?.name;
       const isRelevantPod = podNames.includes(involvedName);
-      const isProbeEvent = event.reason === 'Unhealthy' ||
-                          event.reason === 'ProbeError' ||
-                          event.reason === 'BackOff' ||
-                          event.reason === 'Started' ||
-                          event.reason === 'Killing';
-      return isRelevantPod && isProbeEvent;
+      const relevantReasons = [
+        'Unhealthy', 'ProbeError', 'BackOff', 'Started', 'Killing',
+        'Pulled', 'Pulling', 'Created', 'Failed', 'FailedScheduling',
+        'SuccessfulCreate', 'FailedCreate', 'CrashLoopBackOff', 'OOMKilled',
+        'ContainerStatusUnknown', 'FailedMount', 'FailedAttachVolume'
+      ];
+      const isRelevantEvent = relevantReasons.includes(event.reason);
+      return isRelevantPod && isRelevantEvent;
     })
     .map(event => ({
       type: event.type,
@@ -559,7 +584,17 @@ export async function getPodEvents(namespace, labelSelector) {
       podName: event.involvedObject?.name
     }))
     .sort((a, b) => new Date(b.lastTimestamp) - new Date(a.lastTimestamp))
-    .slice(0, 20); // Return last 20 events
+    .slice(0, limit);
+}
+
+/**
+ * Get the full deployment spec/manifest
+ * @param {string} namespace - Kubernetes namespace
+ * @param {string} deploymentName - Deployment name
+ * @returns {Promise<object>} Full deployment object including spec
+ */
+export async function getDeploymentSpec(namespace, deploymentName) {
+  return getDeployment(namespace, deploymentName);
 }
 
 /**
