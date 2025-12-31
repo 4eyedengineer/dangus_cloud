@@ -354,8 +354,9 @@ async function rebuildWithChanges(db, service, deployment, fileChanges, githubTo
   const configMapData = {};
 
   for (const file of fileChanges) {
-    // Escape path: src/nginx.conf -> src_nginx.conf
-    const key = file.path.replace(/\//g, '_');
+    // Encode path: escape underscores first, then convert slashes
+    // e.g., src/my_config.js -> src_my__config.js
+    const key = file.path.replace(/_/g, '__').replace(/\//g, '_');
     configMapData[key] = file.content;
   }
 

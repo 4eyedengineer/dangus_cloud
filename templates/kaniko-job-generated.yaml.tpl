@@ -93,9 +93,10 @@ spec:
               for file in /generated/*; do
                 if [ -f "$file" ]; then
                   filename=$(basename "$file")
-                  # Convert underscores back to slashes for nested paths
-                  # e.g., src_nginx.conf -> src/nginx.conf
-                  destpath=$(echo "$filename" | sed 's/_/\//g')
+                  # Decode path: convert single underscores to slashes, then double to single
+                  # e.g., src_my__config.js -> src/my_config.js
+                  # Uses null byte as temp placeholder to avoid double-replacement
+                  destpath=$(echo "$filename" | sed 's/__/\x00/g; s/_/\//g; s/\x00/_/g')
                   # Security: Reject paths with .. or starting with /
                   if echo "$destpath" | grep -qE '(^/|\.\.)'; then
                     echo "SECURITY: Rejecting invalid path: $destpath"
