@@ -64,6 +64,13 @@ export function DebugSessionViewer({
     }
   }, [session.status, sessionId]);
 
+  // Notify parent when session reaches terminal state
+  useEffect(() => {
+    if (session.isComplete()) {
+      onComplete(session);
+    }
+  }, [session.status, onComplete, session]);
+
   // Handle cancel
   const handleCancel = async () => {
     try {
