@@ -36,3 +36,4 @@ export { SegmentedGauge, SegmentedGaugeCompact } from './SegmentedGauge'
 // Debug components
 export { DiffViewer, SimpleDiffViewer } from './DiffViewer'
 export { DebugSessionViewer } from './DebugSessionViewer'
+export { DebugAttemptHistory } from './DebugAttemptHistory'

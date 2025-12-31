@@ -4,10 +4,10 @@ import { TerminalCard, TerminalSection } from './TerminalCard';
 import { TerminalProgress } from './TerminalProgress';
 import TerminalButton from './TerminalButton';
 import { SimpleDiffViewer } from './DiffViewer';
+import { DebugAttemptHistory } from './DebugAttemptHistory';
 import { useDebugSession } from '../hooks/useDebugSession';
 import {
   fetchDebugSession,
-  fetchDebugAttempts,
   cancelDebugSession,
   retryDebugSession,
 } from '../api/debug';
@@ -29,8 +29,7 @@ export function DebugSessionViewer({
 }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [attempts, setAttempts] = useState([]);
-  const [showAttempts, setShowAttempts] = useState(false);
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [retrying, setRetrying] = useState(false);
 
@@ -55,14 +54,6 @@ export function DebugSessionViewer({
     loadSession();
   }, [sessionId]);
 
-  // Fetch attempts when session completes
-  useEffect(() => {
-    if (session.isComplete() && sessionId) {
-      fetchDebugAttempts(sessionId)
-        .then(data => setAttempts(data.attempts || []))
-        .catch(() => {});
-    }
-  }, [session.status, sessionId]);
 
   // Handle cancel
   const handleCancel = async () => {
@@ -217,62 +208,49 @@ export function DebugSessionViewer({
   // FAILED STATE
   if (session.isFailed()) {
     return (
-      <TerminalCard title="COULD NOT AUTO-FIX" variant="red" className={className}>
-        <div className="space-y-4">
-          <div className="text-terminal-red font-mono text-sm">
-            After {session.maxAttempts} attempts, automatic repair was unsuccessful.
+      <>
+        <TerminalCard title="COULD NOT AUTO-FIX" variant="red" className={className}>
+          <div className="space-y-4">
+            <div className="text-terminal-red font-mono text-sm">
+              After {session.maxAttempts} attempts, automatic repair was unsuccessful.
+            </div>
+
+            {session.finalExplanation && (
+              <TerminalSection
+                title="ANALYSIS"
+                color="red"
+              >
+                <pre className="text-terminal-muted text-xs whitespace-pre-wrap">
+                  {session.finalExplanation}
+                </pre>
+              </TerminalSection>
+            )}
+
+            <div className="flex justify-center gap-4 pt-2">
+              <TerminalButton
+                variant="primary"
+                onClick={handleRetry}
+                disabled={retrying}
+              >
+                {retrying ? '[ STARTING... ]' : '[ TRY AGAIN ]'}
+              </TerminalButton>
+              <TerminalButton
+                variant="secondary"
+                onClick={() => setShowHistoryModal(true)}
+              >
+                [ VIEW ALL {session.maxAttempts} ATTEMPTS ]
+              </TerminalButton>
+            </div>
           </div>
+        </TerminalCard>
 
-          {session.finalExplanation && (
-            <TerminalSection
-              title="ANALYSIS"
-              variant="red"
-              defaultCollapsed={false}
-            >
-              <pre className="text-terminal-muted text-xs whitespace-pre-wrap">
-                {session.finalExplanation}
-              </pre>
-            </TerminalSection>
-          )}
-
-          {showAttempts && attempts.length > 0 && (
-            <TerminalSection
-              title="ALL ATTEMPTS"
-              variant="amber"
-              defaultCollapsed={false}
-            >
-              <div className="space-y-3">
-                {attempts.map((attempt, idx) => (
-                  <div key={idx} className="border border-terminal-border p-2">
-                    <div className="text-terminal-secondary font-mono text-xs mb-1">
-                      Attempt {attempt.attemptNumber}
-                    </div>
-                    <pre className="text-terminal-muted text-xs whitespace-pre-wrap">
-                      {attempt.explanation}
-                    </pre>
-                  </div>
-                ))}
-              </div>
-            </TerminalSection>
-          )}
-
-          <div className="flex justify-center gap-4 pt-2">
-            <TerminalButton
-              variant="primary"
-              onClick={handleRetry}
-              disabled={retrying}
-            >
-              {retrying ? '[ STARTING... ]' : '[ TRY AGAIN ]'}
-            </TerminalButton>
-            <TerminalButton
-              variant="secondary"
-              onClick={() => setShowAttempts(!showAttempts)}
-            >
-              {showAttempts ? '[ HIDE ATTEMPTS ]' : '[ VIEW ALL ATTEMPTS ]'}
-            </TerminalButton>
-          </div>
-        </div>
-      </TerminalCard>
+        {showHistoryModal && (
+          <DebugAttemptHistory
+            sessionId={sessionId}
+            onClose={() => setShowHistoryModal(false)}
+          />
+        )}
+      </>
     );
   }
 
